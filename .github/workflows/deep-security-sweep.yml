@@ -33,7 +33,7 @@ jobs:
         working-directory: ssh-hunt
 
       - name: Trivy full repo scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.2
         with:
           version: v0.69.3
           scan-type: fs
