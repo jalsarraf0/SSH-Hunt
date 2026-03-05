@@ -21,7 +21,10 @@ use ssh_hunt_scripts::{ScriptContext, ScriptEngine, ScriptPolicy};
 use tokio::net::TcpListener;
 use tokio::time::{sleep, timeout};
 use tracing::{error, info, warn};
-use ui::{lore_message, mode_banner, mode_switch_banner};
+use ui::{
+    key_value_line, lore_message, mission_state_badge, mode_banner, mode_switch_banner,
+    progress_meter, section_banner, Theme, RESET,
+};
 use uuid::Uuid;
 use vfs::Vfs;
 use world::{
@@ -368,18 +371,25 @@ impl GameSession {
 
         match cmd {
             "help" => {
-                let msg = [
-                    "Core: help tutorial missions accept submit mode gate keyvault status events leaderboard daily tier",
-                    "Social: chat party mail",
-                    "Economy: inventory shop auction",
-                    "Scripts: scripts market | scripts run <name>",
-                    "PvP: pvp roster|challenge|attack|defend|script",
-                    "Difficulty tiers: Noob, Gud, Hardcore",
-                    "Hardcore rule: 3 deaths = ZEROED (account locked)",
-                    "Security rule: host escape/probing attempts = PERMA-ZERO + disconnect",
-                ]
-                .join("\n");
-                Ok((format!("{msg}\n"), 0, false))
+                let theme = Theme::for_mode(self.mode.clone());
+                let mut out = section_banner(self.mode.clone(), "COMMAND MATRIX");
+                out.push_str(&format!(
+                    "{}Quickstart{} tutorial start -> missions -> gate -> mode netcity\n",
+                    theme.accent, RESET
+                ));
+                out.push('\n');
+                out.push_str("Core      help tutorial missions accept submit mode gate keyvault status events leaderboard daily tier\n");
+                out.push_str("Social    chat party mail\n");
+                out.push_str("Economy   inventory shop auction\n");
+                out.push_str("Scripts   scripts market | scripts run <name>\n");
+                out.push_str(
+                    "PvP       pvp roster | pvp challenge <username> | pvp attack|defend|script\n",
+                );
+                out.push('\n');
+                out.push_str("Rules\n");
+                out.push_str("  - Hardcore: 3 deaths = ZEROED (account locked)\n");
+                out.push_str("  - Host escape/probing attempts = PERMA-ZERO + disconnect\n");
+                Ok((out, 0, false))
             }
             "gate" => {
                 let gate = self
@@ -388,21 +398,23 @@ impl GameSession {
                     .netcity_gate_reason(player_id, &self.offered_fingerprints)
                     .await?;
                 let out = if let Some(reason) = gate {
-                    [
-                        "NetCity gate: LOCKED".to_owned(),
-                        format!("Reason: {reason}"),
-                        "Unlock checklist:".to_owned(),
-                        "- keyvault register".to_owned(),
-                        "- submit keys-vault".to_owned(),
-                        "- submit one starter mission (pipes-101|finder|redirect-lab|log-hunt|dedupe-city)"
-                            .to_owned(),
-                        "- reconnect while presenting your registered SSH key".to_owned(),
-                    ]
-                    .join("\n")
+                    let mut msg = section_banner(self.mode.clone(), "NETCITY GATE // LOCKED");
+                    msg.push_str(&key_value_line(self.mode.clone(), "Reason", &reason));
+                    msg.push('\n');
+                    msg.push_str("Unlock checklist\n");
+                    msg.push_str("  [ ] keyvault register\n");
+                    msg.push_str("  [ ] submit keys-vault\n");
+                    msg.push_str(
+                        "  [ ] submit one starter mission (pipes-101|finder|redirect-lab|log-hunt|dedupe-city)\n",
+                    );
+                    msg.push_str("  [ ] reconnect with registered SSH key\n");
+                    msg
                 } else {
-                    "NetCity gate: UNLOCKED\nUse: mode netcity".to_owned()
+                    let mut msg = section_banner(self.mode.clone(), "NETCITY GATE // UNLOCKED");
+                    msg.push_str("Use: mode netcity\n");
+                    msg
                 };
-                Ok((format!("{out}\n"), 0, false))
+                Ok((out, 0, false))
             }
             "leaderboard" => {
                 let requested = args
@@ -410,11 +422,18 @@ impl GameSession {
                     .and_then(|raw| raw.parse::<usize>().ok())
                     .unwrap_or(10);
                 let entries = self.app.world.leaderboard_snapshot(requested).await;
-                let mut out = String::from("RANK  PLAYER                    REP   WALLET   ACH\n");
+                let mut out = section_banner(self.mode.clone(), "LEADERBOARD");
+                out.push_str("RANK  PLAYER                    REP   WALLET   ACH\n");
                 for (idx, entry) in entries.iter().enumerate() {
+                    let rank = idx + 1;
+                    let rank_label = if rank <= 9 {
+                        format!("0{rank}")
+                    } else {
+                        rank.to_string()
+                    };
                     out.push_str(&format!(
                         "{:<5} {:<25} {:<5} {:<8} {}\n",
-                        idx + 1,
+                        rank_label,
                         entry.display_name,
                         entry.reputation,
                         entry.wallet,
@@ -425,31 +444,37 @@ impl GameSession {
             }
             "tutorial" => {
                 if args.first() == Some(&"start") {
-                    let text = [
-                        "=== TUTORIAL START ===",
-                        "Prompt format: <username@remote_ip>@<node>:/path$",
-                        "Use pipes: cat /logs/neon-gateway.log | grep token | wc -l",
-                        "Use redirection: grep token /logs/neon-gateway.log > /tmp/tokens.txt",
-                        "KEYS VAULT mission (mandatory):",
-                        "  ssh-keygen -t ed25519 -a 64 -f ~/.ssh/ssh-hunt_ed25519",
-                        "  keyvault register",
-                        "Host breakout/probing attempts are auto-zeroed permanently.",
-                        "Then complete one starter mission to unlock NetCity.",
-                    ]
-                    .join("\n");
-                    Ok((format!("{text}\n"), 0, false))
+                    let mut out = section_banner(self.mode.clone(), "TUTORIAL START");
+                    out.push_str("Prompt format: <username@remote_ip>@<node>:/path$\n");
+                    out.push('\n');
+                    out.push_str("Command chain drills\n");
+                    out.push_str("  cat /logs/neon-gateway.log | grep token | wc -l\n");
+                    out.push_str("  grep token /logs/neon-gateway.log > /tmp/tokens.txt\n");
+                    out.push('\n');
+                    out.push_str("KEYS VAULT mission (required)\n");
+                    out.push_str("  ssh-keygen -t ed25519 -a 64 -f ~/.ssh/ssh-hunt_ed25519\n");
+                    out.push_str("  keyvault register\n");
+                    out.push('\n');
+                    out.push_str("Host breakout/probing attempts are auto-zeroed permanently.\n");
+                    out.push_str("Complete one starter mission to unlock NetCity.\n");
+                    Ok((out, 0, false))
                 } else {
                     Ok(("Usage: tutorial start\n".to_owned(), 1, false))
                 }
             }
             "missions" => {
                 let missions = self.app.world.mission_statuses(player_id).await?;
-                let mut out = String::from("CODE             STATE       REQUIRED  TITLE\n");
+                let mut out = section_banner(self.mode.clone(), "MISSION BOARD");
+                out.push_str("CODE             STATE      PROG                 REQUIRED  TITLE\n");
                 for m in missions {
+                    let badge = mission_state_badge(self.mode.clone(), &m.state);
+                    let meter = progress_meter(self.mode.clone(), m.progress, 12);
                     out.push_str(&format!(
-                        "{:<16} {:<11} {:<8} {}\n",
+                        "{:<16} {:<10} {:>3}% {} {:<8} {}\n",
                         m.code,
-                        format!("{:?}", m.state),
+                        badge,
+                        m.progress.min(100),
+                        meter,
                         if m.required { "yes" } else { "no" },
                         m.title
                     ));
@@ -715,26 +740,75 @@ impl GameSession {
                 } else {
                     achievements.join(", ")
                 };
-                let gate_status = gate.unwrap_or_else(|| "UNLOCKED".to_owned());
+                let gate_status = gate.clone().unwrap_or_else(|| "UNLOCKED".to_owned());
                 let streak = player
                     .streak_day
                     .map(|d| d.to_string())
                     .unwrap_or("-".to_owned());
+                let rep_pct = player.reputation.clamp(0, 100) as u8;
+                let death_pct = if player.deaths >= 3 {
+                    0
+                } else {
+                    (((3 - player.deaths) as f32 / 3.0) * 100.0).round() as u8
+                };
+                let gate_pct = if gate.is_none() { 100 } else { 20 };
 
-                let out = [
-                    format!("Alias: {}", player.private_alias),
-                    format!("Display: {}", player.display_name),
-                    format!("Tier/Mode: {:?} / {:?}", player.tier, player.mode),
-                    format!("Wallet: {} Neon Chips", player.wallet),
-                    format!("Reputation: {}", player.reputation),
-                    format!("Deaths: {} (Hardcore lock at 3)", player.deaths),
-                    format!("Daily streak: {} (last claim: {})", player.streak, streak),
-                    format!("Achievements: {ach}"),
-                    format!("NetCity gate: {gate_status}"),
-                ]
-                .join("\n");
+                let mut out = section_banner(self.mode.clone(), "PLAYER STATUS");
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "Alias",
+                    &player.private_alias,
+                ));
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "Display",
+                    &player.display_name,
+                ));
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "Tier/Mode",
+                    &format!("{:?} / {:?}", player.tier, player.mode),
+                ));
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "Wallet",
+                    &format!("{} Neon Chips", player.wallet),
+                ));
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "Reputation",
+                    &format!(
+                        "{} {}",
+                        player.reputation,
+                        progress_meter(self.mode.clone(), rep_pct, 14)
+                    ),
+                ));
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "Survival",
+                    &format!(
+                        "{} deaths {}",
+                        player.deaths,
+                        progress_meter(self.mode.clone(), death_pct, 14)
+                    ),
+                ));
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "NetCity Gate",
+                    &format!(
+                        "{} {}",
+                        gate_status,
+                        progress_meter(self.mode.clone(), gate_pct, 14)
+                    ),
+                ));
+                out.push_str(&key_value_line(
+                    self.mode.clone(),
+                    "Daily Streak",
+                    &format!("{} (last claim: {})", player.streak, streak),
+                ));
+                out.push_str(&key_value_line(self.mode.clone(), "Achievements", &ach));
 
-                Ok((format!("{out}\n"), 0, false))
+                Ok((out, 0, false))
             }
             "events" => {
                 let feed = self
@@ -746,7 +820,7 @@ impl GameSession {
                     return Ok(("No upcoming world events.\n".to_owned(), 0, false));
                 }
                 let now = chrono::Utc::now();
-                let mut out = String::from("WORLD EVENTS\n");
+                let mut out = section_banner(self.mode.clone(), "WORLD EVENTS");
                 for event in feed {
                     let status = if event.active {
                         format!(
@@ -768,9 +842,12 @@ impl GameSession {
             }
             "scripts" => {
                 if args.first() == Some(&"market") || args.is_empty() {
-                    let mut out = String::from("SCRIPT MARKET\n");
+                    let mut out = section_banner(self.mode.clone(), "SCRIPT MARKET");
                     for entry in script_market() {
-                        out.push_str(&format!("- {:<12} {}\n", entry.name, entry.description));
+                        out.push_str(&format!(
+                            "- {:<12} {}{}\n",
+                            entry.name, entry.description, RESET
+                        ));
                     }
                     out.push_str("Run with: scripts run <name>\n");
                     return Ok((out, 0, false));
@@ -968,12 +1045,18 @@ impl GameSession {
     }
 
     fn welcome_banner(&self) -> String {
+        let theme = Theme::for_mode(self.mode.clone());
         let mut out = String::new();
         out.push_str(&mode_banner(self.mode.clone(), self.flash_enabled));
         out.push('\n');
         out.push_str(lore_message(self.mode.clone()));
         out.push('\n');
-        out.push_str("Type `tutorial start` to begin onboarding.\n");
+        out.push_str(&section_banner(self.mode.clone(), "BOOT HUD"));
+        out.push_str(&format!(
+            "{}Next{} tutorial start -> missions -> gate -> mode netcity\n",
+            theme.accent, RESET
+        ));
+        out.push_str("Type `help` for the full command matrix.\n");
         out.push_str(
             "Host breakout/probing attempts trigger permanent account zero + disconnect.\n",
         );
