@@ -22,6 +22,7 @@ make runner-logs
 ```
 
 `make runner-up` uses `.env.runner` as the compose env file, so CPU budget settings are applied at compose render time.
+It also normalizes ownership on `volumes/gh-runner*` before start to prevent stale root-owned action cache files from breaking non-root runners.
 
 Default stack:
 

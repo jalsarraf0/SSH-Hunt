@@ -4,6 +4,7 @@ set -euo pipefail
 runner_compose='docker-compose.runner.yml'
 runner_dockerfile='docker/runner/Dockerfile'
 runner_env_example='.env.runner.example'
+runner_workdir_script='scripts/prepare-runner-workdirs.sh'
 
 all_runs_on="$(grep -RIn --include='*.yml' 'runs-on:' .github/workflows || true)"
 if [[ -z "${all_runs_on}" ]]; then
@@ -41,6 +42,11 @@ fi
 
 if [[ ! -f "${runner_env_example}" ]]; then
   echo "Missing ${runner_env_example}; runner CPU budget policy cannot be verified."
+  exit 1
+fi
+
+if [[ ! -x "${runner_workdir_script}" ]]; then
+  echo "Missing executable ${runner_workdir_script}; runner workspace permission policy cannot be verified."
   exit 1
 fi
 
@@ -135,6 +141,11 @@ if ! grep -En '^runner-up: runner-env' Makefile >/dev/null; then
   exit 1
 fi
 
+if ! grep -En 'runner-workdirs' Makefile >/dev/null; then
+  echo "Runner directive violation: Makefile must include runner-workdirs preparation."
+  exit 1
+fi
+
 if ! grep -En 'RUNNER_COMPOSE := docker compose --env-file \.env\.runner -f docker-compose\.runner\.yml' Makefile >/dev/null; then
   echo "Runner directive violation: RUNNER_COMPOSE must use --env-file .env.runner."
   exit 1
@@ -142,6 +153,11 @@ fi
 
 if ! grep -En '\$\(RUNNER_COMPOSE\) up -d --build' Makefile >/dev/null; then
   echo "Runner directive violation: runner-up must bring up docker-compose.runner.yml services."
+  exit 1
+fi
+
+if ! grep -En '\$\(MAKE\) --no-print-directory runner-workdirs' Makefile >/dev/null; then
+  echo "Runner directive violation: runner-up must normalize runner workspace ownership."
   exit 1
 fi
 

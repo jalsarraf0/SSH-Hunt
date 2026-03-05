@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose
 RUNNER_COMPOSE := docker compose --env-file .env.runner -f docker-compose.runner.yml
 
-.PHONY: ensure-env up down logs ps restart db-migrate db-seed test backup restore doctor firewall-open-24444 firewall-status runner-env runner-cpu-budget runner-up runner-down runner-logs runner-ps
+.PHONY: ensure-env up down logs ps restart db-migrate db-seed test backup restore doctor firewall-open-24444 firewall-status runner-env runner-cpu-budget runner-workdirs runner-up runner-down runner-logs runner-ps
 
 ensure-env:
 	@if [ ! -f .env ]; then \
@@ -50,7 +50,11 @@ runner-env:
 runner-cpu-budget:
 	./scripts/refresh-runner-cpu-budget.sh .env.runner
 
+runner-workdirs:
+	./scripts/prepare-runner-workdirs.sh
+
 runner-up: runner-env
+	$(MAKE) --no-print-directory runner-workdirs
 	$(RUNNER_COMPOSE) up -d --build
 
 runner-down:

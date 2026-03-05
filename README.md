@@ -330,7 +330,7 @@ Runner policy:
 Self-hosted runner setup:
 
 - `cp .env.runner.example .env.runner`
-- `make runner-up` (refreshes CPU budget, builds `docker/runner/Dockerfile`, then starts persistent + 4 ephemeral runners using `.env.runner`)
+- `make runner-up` (refreshes CPU budget, normalizes runner workdir ownership, builds `docker/runner/Dockerfile`, then starts persistent + 4 ephemeral runners using `.env.runner`)
 - `make runner-logs`
 - full guide: `docs/SELF_HOSTED_RUNNER.md`
 
