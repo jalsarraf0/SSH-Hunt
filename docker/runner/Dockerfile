@@ -38,5 +38,3 @@ RUN set -eux; \
     curl -fsSL "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/${osv_asset}" \
       -o /usr/local/bin/osv-scanner; \
     chmod +x /usr/local/bin/osv-scanner
-
-USER runner
