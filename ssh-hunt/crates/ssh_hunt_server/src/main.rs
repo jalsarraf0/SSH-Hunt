@@ -18,6 +18,7 @@ use shell::{ExecutionContext, ShellEngine};
 use sqlx::PgPool;
 use ssh_hunt_scripts::{ScriptContext, ScriptEngine, ScriptPolicy};
 use tokio::net::TcpListener;
+use tokio::time::{sleep, timeout};
 use tracing::{error, info, warn};
 use ui::{lore_message, mode_banner, mode_switch_banner};
 use uuid::Uuid;
@@ -1342,16 +1343,16 @@ async fn main() -> Result<()> {
     let hidden_ops: HiddenOpsConfig = config::load_hidden_ops(&hidden_ops_path)?;
 
     if args.healthcheck {
-        let db_ok = if let Ok(db_url) = std::env::var("DATABASE_URL") {
-            PgPool::connect_lazy(&db_url).map(|_| true).unwrap_or(false)
-        } else {
-            false
-        };
-        if db_ok {
-            println!("ok");
-            return Ok(());
-        }
-        return Err(anyhow!("database healthcheck failed"));
+        let db_url = std::env::var("DATABASE_URL").context("DATABASE_URL is required")?;
+        let pool = timeout(Duration::from_secs(3), PgPool::connect(&db_url))
+            .await
+            .context("database healthcheck timed out")??;
+        let _ping: i32 = sqlx::query_scalar("SELECT 1")
+            .fetch_one(&pool)
+            .await
+            .context("database healthcheck query failed")?;
+        println!("ok");
+        return Ok(());
     }
 
     let db_url = std::env::var("DATABASE_URL").context("DATABASE_URL is required")?;
@@ -1382,12 +1383,31 @@ async fn main() -> Result<()> {
     };
     let server_cfg = Arc::new(server_cfg);
 
-    info!(listen = %cfg.server.listen, "starting SSH-Hunt server");
-
-    let listener = TcpListener::bind(&cfg.server.listen).await?;
     let mut server = GameServer { app };
-    server.run_on_socket(server_cfg, &listener).await?;
+    let mut retry_delay = Duration::from_secs(1);
+    loop {
+        match TcpListener::bind(&cfg.server.listen).await {
+            Ok(listener) => {
+                info!(listen = %cfg.server.listen, "starting SSH-Hunt server");
+                retry_delay = Duration::from_secs(1);
+                match server.run_on_socket(server_cfg.clone(), &listener).await {
+                    Ok(()) => warn!("server loop exited unexpectedly; restarting listener"),
+                    Err(err) => error!(error = ?err, "server loop error; restarting listener"),
+                }
+            }
+            Err(err) => {
+                error!(
+                    listen = %cfg.server.listen,
+                    error = ?err,
+                    "failed to bind SSH listener; retrying"
+                );
+            }
+        }
+        sleep(retry_delay).await;
+        retry_delay = std::cmp::min(retry_delay * 2, Duration::from_secs(10));
+    }
 
+    #[allow(unreachable_code)]
     Ok(())
 }
 

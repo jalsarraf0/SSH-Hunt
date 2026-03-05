@@ -242,6 +242,11 @@ If you run `cloudflared` inside the same Docker network as `ssh-hunt`, target:
 
 `ssh://ssh-hunt:22222`
 
+If you are **not** using Cloudflare Tunnel and are exposing `ssh-hunt.appnest.cc` with an A/AAAA record:
+
+- keep DNS record as **DNS only** (no HTTP proxy),
+- proxy mode can break raw SSH on custom port `24444`.
+
 ## Deployment and Ops
 
 Primary operator commands:
@@ -254,6 +259,7 @@ make logs
 make restart
 make doctor
 make firewall-open-24444
+make firewall-status
 make db-migrate
 make db-seed
 make test
@@ -310,6 +316,7 @@ Service not reachable:
 - check game logs with `make logs`.
 - run `make doctor` for a one-shot local health summary.
 - run `make firewall-open-24444` to open `24444/tcp` in all firewalld zones.
+- run `make firewall-status` to verify active zone + `24444/tcp` allow state.
 
 `Connection refused` specifically usually means no listener at that moment.
 Most common causes:
@@ -317,6 +324,20 @@ Most common causes:
 - containers are stopped,
 - compose startup failed (for example missing `.env`),
 - host listener exists but external NAT/port-forward path is disabled.
+
+Windows `ssh -vvvv` notes:
+
+- `Failed to open .../.ssh/config error:2` is non-fatal when those files do not exist.
+- `error: 10061` means TCP was actively refused at the target edge (service down or wrong port-forward destination).
+- `error: 10060` means timeout (traffic dropped/blocked on path).
+
+Public hostname checklist for `ssh-hunt.appnest.cc`:
+
+- test local host listener: `ss -ltnp | rg 24444`,
+- confirm containers: `make ps`,
+- confirm firewalld port: `sudo firewall-cmd --zone=lan-ssh --query-port=24444/tcp`,
+- confirm router/NAT rule: WAN `TCP/24444` -> `<server-lan-ip>:24444`,
+- confirm DNS currently resolves to your active public IP (for example on March 5, 2026 this host resolves to `70.233.5.234`).
 
 NetCity still locked:
 

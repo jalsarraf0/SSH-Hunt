@@ -34,7 +34,13 @@ Repo helper target (opens `24444/tcp` in all firewalld zones):
 
 ```bash
 make firewall-open-24444
+make firewall-status
 ```
+
+Edge routing requirements (outside host firewall):
+
+- Router/NAT forward: `WAN TCP 24444 -> <server-lan-ip>:24444`
+- If using public DNS A/AAAA records directly, keep record in DNS-only mode (no HTTP proxy layer for raw SSH).
 
 ## Runtime Secret Configuration
 
