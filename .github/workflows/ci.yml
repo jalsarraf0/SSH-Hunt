@@ -46,11 +46,13 @@ jobs:
       run:
         working-directory: ssh-hunt
     env:
-      DATABASE_URL: postgres://ssh_hunt:ssh_hunt_dev@localhost:${{ job.services.postgres.ports[5432] }}/ssh_hunt
       RUST_BACKTRACE: 1
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v6
+
+      - name: Configure database URL
+        run: echo "DATABASE_URL=postgres://ssh_hunt:ssh_hunt_dev@localhost:${{ job.services.postgres.ports['5432'] }}/ssh_hunt" >> "$GITHUB_ENV"
 
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@stable
