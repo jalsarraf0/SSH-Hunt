@@ -1,0 +1,15 @@
+services:
+  github-runner:
+    image: myoung34/github-runner:ubuntu-jammy
+    container_name: ssh-hunt-gh-runner
+    restart: unless-stopped
+    env_file:
+      - .env.runner
+    environment:
+      RUNNER_SCOPE: repo
+      RUNNER_WORKDIR: /tmp/runner/work
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./volumes/gh-runner:/tmp/runner
+    security_opt:
+      - no-new-privileges:true

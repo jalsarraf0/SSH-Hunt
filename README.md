@@ -311,6 +311,21 @@ Pipelines include:
 - vulnerability scans (`trivy`, `osv-scanner`),
 - Docker build/push, signed image workflow, SBOM/provenance.
 
+Runner policy:
+
+- workflows use `SSH_HUNT_RUNNER_LABELS` (JSON array string) to choose runner labels,
+- default fallback is GitHub-hosted `["ubuntu-latest"]` for forks/clones,
+- this repo can be forced to self-hosted by setting:
+  `gh variable set SSH_HUNT_RUNNER_LABELS --body '["self-hosted","linux","x64","ssh-hunt"]'`,
+- policy enforcement script: `./scripts/verify-self-hosted-runner-directive.sh`.
+
+Self-hosted runner setup:
+
+- `cp .env.runner.example .env.runner`
+- `make runner-up`
+- `make runner-logs`
+- full guide: `docs/SELF_HOSTED_RUNNER.md`
+
 ## Troubleshooting
 
 Service not reachable:
@@ -362,7 +377,7 @@ Database issues:
 
 ## Contributing
 
-- Read `docs/GAMEPLAY.md`, `docs/SECURITY.md`, and `docs/DEPLOYMENT.md`.
+- Read `docs/GAMEPLAY.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, and `docs/SELF_HOSTED_RUNNER.md`.
 - Follow `CODE_OF_CONDUCT.md`.
 - Run `make test` before opening a PR.
 

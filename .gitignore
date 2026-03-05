@@ -1,4 +1,5 @@
 .env
+.env.runner
 .env.local
 *.log
 *.sqlite

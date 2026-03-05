@@ -16,13 +16,16 @@ permissions:
 
 jobs:
   security-checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.SSH_HUNT_RUNNER_LABELS != '' && vars.SSH_HUNT_RUNNER_LABELS || '["ubuntu-latest"]') }}
     env:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Enforce self-hosted runner directive
+        run: ./scripts/verify-self-hosted-runner-directive.sh
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
