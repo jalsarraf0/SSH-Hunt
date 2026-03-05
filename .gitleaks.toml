@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Ignore Cargo.lock crate-name false positive"
+  paths = ["ssh-hunt/Cargo.lock"]
+  regexes = ['''(?i)libcrux-secrets''']
