@@ -1,0 +1,15 @@
+[package]
+name = "integration_tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+protocol = { path = "../crates/protocol" }
+shell = { path = "../crates/shell" }
+ssh_hunt_scripts = { path = "../crates/scripts" }
+tokio.workspace = true
+vfs = { path = "../crates/vfs" }
+world = { path = "../crates/world" }

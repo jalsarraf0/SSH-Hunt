@@ -1,0 +1,10 @@
+# Runtime-only private file. Do not commit production values.
+secret_mission:
+  code: "replace_with_private_code"
+  min_reputation: 60
+  required_achievement: "Pipe Dream"
+  prompt_ciphertext_b64: "AA=="
+telegram:
+  enabled: false
+  bot_token: "replace_me"
+  chat_id: "replace_me"

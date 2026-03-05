@@ -1,0 +1,17 @@
+.env
+.env.local
+*.log
+*.sqlite
+/volumes/
+/backups/
+/data/
+/tmp/
+/target/
+**/target/
+!.cargo/config.toml
+.DS_Store
+.idea/
+.vscode/
+ssh-hunt/.sqlx/
+ssh-hunt/coverage/
+ssh-hunt/test-output/

@@ -1,0 +1,75 @@
+name: Deep Security Sweep
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  deep-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install security tooling
+        run: |
+          cargo install cargo-audit --locked
+          cargo install cargo-deny --locked
+
+      - name: Dependency advisories
+        run: cargo audit
+        working-directory: ssh-hunt
+
+      - name: Policy checks
+        run: cargo deny check advisories bans licenses sources
+        working-directory: ssh-hunt
+
+      - name: Trivy full repo scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: true
+          format: table
+
+      - name: OSV recursive scan
+        uses: google/osv-scanner-action/osv-scanner-action@v1
+        with:
+          scan-args: -r .
+
+  dependency-update-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update Rust dependencies
+        working-directory: ssh-hunt
+        run: |
+          cargo update -w
+
+      - name: Create dependency update PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore(deps): weekly dependency refresh"
+          branch: "automation/weekly-dependency-refresh"
+          delete-branch: true
+          title: "chore(deps): weekly dependency refresh"
+          body: |
+            Automated weekly dependency refresh.
+            - Triggered by deep security sweep workflow.
+            - Run CI + security pipelines before merge.
+          labels: |
+            dependencies
+            security

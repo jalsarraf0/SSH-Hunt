@@ -1,0 +1,12 @@
+server:
+  listen: 0.0.0.0:22222
+  rate_limit_per_second: 8
+  burst: 20
+ui:
+  default_mode: training
+  flash_default: true
+redline:
+  duration_seconds: 300
+world:
+  daily_reward_cap: 7
+  style_bonus_daily_cap: 5

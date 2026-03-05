@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency review
+        uses: actions/dependency-review-action@v4
+
+  rust-ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ssh_hunt
+          POSTGRES_USER: ssh_hunt
+          POSTGRES_PASSWORD: ssh_hunt_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ssh_hunt -d ssh_hunt"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: ssh-hunt
+    env:
+      DATABASE_URL: postgres://ssh_hunt:ssh_hunt_dev@localhost:5432/ssh_hunt
+      RUST_BACKTRACE: 1
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ssh-hunt
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build check
+        run: cargo check --workspace --all-features --locked
+
+      - name: Migrate database
+        run: cargo run -p admin -- migrate
+
+      - name: SQLx migrate check
+        run: |
+          cargo install sqlx-cli --locked --no-default-features --features rustls,postgres
+          sqlx migrate info --source ./migrations
+
+      - name: Seed database
+        run: cargo run -p admin -- seed
+
+      - name: Run full workspace tests
+        run: cargo test --workspace --all-features --locked
+
+      - name: Regression suite (release profile)
+        run: cargo test -p integration_tests --test regression --release --locked
+
+      - name: Coverage (tarpaulin)
+        run: |
+          cargo install cargo-tarpaulin --locked
+          cargo tarpaulin --workspace --all-features --timeout 120 --out Xml
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ssh-hunt/cobertura.xml

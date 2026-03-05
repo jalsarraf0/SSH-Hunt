@@ -1,0 +1,85 @@
+# Deployment (Fedora)
+
+## Host Layout
+
+Deploy under:
+
+- `/docker/ssh-hunt`
+
+Persistent volumes:
+
+- Postgres: `/docker/ssh-hunt/volumes/postgres`
+- Game data/config: `/docker/ssh-hunt/volumes/ssh-hunt`
+- Backups: `/docker/ssh-hunt/volumes/backups`
+
+## Initial Setup
+
+```bash
+cd /docker/ssh-hunt
+./scripts/install.sh
+cp .env.example .env
+make up
+```
+
+## Port Exposure
+
+Default public port is `24444` mapped to container `22222`.
+
+```bash
+sudo firewall-cmd --permanent --add-port=24444/tcp
+sudo firewall-cmd --reload
+```
+
+## Runtime Secret Configuration
+
+Set super-admin mapping in:
+
+- `/docker/ssh-hunt/volumes/ssh-hunt/secrets/admin.yaml`
+- `/docker/ssh-hunt/volumes/ssh-hunt/secrets/hidden_ops.yaml` (private hidden mission + optional Telegram relay)
+
+Keep this file private and chmod 600.
+
+## Migrations and Seeding
+
+```bash
+make db-migrate
+make db-seed
+```
+
+## Backup / Restore
+
+```bash
+make backup
+make restore
+# or explicitly
+./scripts/restore.sh ./volumes/backups/ssh-hunt-YYYYMMDD-HHMMSS.dump
+```
+
+## Upgrade Procedure
+
+1. Pull latest repository changes.
+2. Rebuild and restart:
+
+```bash
+make up
+```
+
+3. Apply migrations:
+
+```bash
+make db-migrate
+```
+
+4. Validate health:
+
+```bash
+make ps
+make logs
+```
+
+## Hardening Recommendations
+
+- Enable CrowdSec or Fail2ban on host.
+- Keep OS and Docker runtime patched.
+- Restrict management SSH by IP where possible.
+- Monitor failed SSH connection rates.
