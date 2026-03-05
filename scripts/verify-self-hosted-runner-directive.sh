@@ -3,6 +3,7 @@ set -euo pipefail
 
 runner_compose='docker-compose.runner.yml'
 runner_dockerfile='docker/runner/Dockerfile'
+runner_env_example='.env.runner.example'
 
 all_runs_on="$(grep -RIn --include='*.yml' 'runs-on:' .github/workflows || true)"
 if [[ -z "${all_runs_on}" ]]; then
@@ -35,6 +36,11 @@ fi
 
 if [[ ! -f "${runner_dockerfile}" ]]; then
   echo "Missing ${runner_dockerfile}; custom runner image requirement not met."
+  exit 1
+fi
+
+if [[ ! -f "${runner_env_example}" ]]; then
+  echo "Missing ${runner_env_example}; runner CPU budget policy cannot be verified."
   exit 1
 fi
 
@@ -73,13 +79,45 @@ if [[ "${build_dockerfile_count}" != "5" ]]; then
   exit 1
 fi
 
+cpu_limit_count="$(grep -En '^[[:space:]]{4}cpus:[[:space:]]\$\{RUNNER_CPU_LIMIT_PER_CONTAINER:-0\.1500\}$' "${runner_compose}" | wc -l | tr -d ' ')"
+if [[ "${cpu_limit_count}" != "5" ]]; then
+  echo "Runner directive violation: all 5 services must enforce RUNNER_CPU_LIMIT_PER_CONTAINER."
+  echo "Found ${cpu_limit_count} CPU limit declarations."
+  exit 1
+fi
+
+if ! grep -Eq '^RUNNER_TOTAL_CPU_FRACTION=0\.75$' "${runner_env_example}"; then
+  echo "Runner CPU policy violation: ${runner_env_example} must define RUNNER_TOTAL_CPU_FRACTION=0.75."
+  exit 1
+fi
+
+if ! grep -Eq '^RUNNER_TOTAL_COUNT=5$' "${runner_env_example}"; then
+  echo "Runner CPU policy violation: ${runner_env_example} must define RUNNER_TOTAL_COUNT=5."
+  exit 1
+fi
+
+if ! grep -Eq '^RUNNER_CPU_LIMIT_PER_CONTAINER=' "${runner_env_example}"; then
+  echo "Runner CPU policy violation: ${runner_env_example} must define RUNNER_CPU_LIMIT_PER_CONTAINER."
+  exit 1
+fi
+
 if ! grep -En '^runner-up: runner-env' Makefile >/dev/null; then
   echo "Runner directive violation: Makefile runner-up target is missing."
   exit 1
 fi
 
-if ! grep -En 'docker compose -f docker-compose\.runner\.yml up -d --build' Makefile >/dev/null; then
+if ! grep -En 'RUNNER_COMPOSE := docker compose --env-file \.env\.runner -f docker-compose\.runner\.yml' Makefile >/dev/null; then
+  echo "Runner directive violation: RUNNER_COMPOSE must use --env-file .env.runner."
+  exit 1
+fi
+
+if ! grep -En '\$\(RUNNER_COMPOSE\) up -d --build' Makefile >/dev/null; then
   echo "Runner directive violation: runner-up must bring up docker-compose.runner.yml services."
+  exit 1
+fi
+
+if ! grep -En 'refresh-runner-cpu-budget\.sh \.env\.runner' Makefile >/dev/null; then
+  echo "Runner directive violation: runner CPU budget refresh step missing from Makefile."
   exit 1
 fi
 

@@ -319,12 +319,13 @@ Runner policy:
   `gh variable set SSH_HUNT_RUNNER_LABELS --body '["self-hosted","linux","x64","ssh-hunt"]'`,
 - self-hosted compose stack must include `1` persistent + `4` ephemeral runners,
 - self-hosted runners use host networking so CI service containers are reachable,
+- runner CPU policy: total runner pool budget is `75%` of host cores, auto-divided across 5 containers via `scripts/refresh-runner-cpu-budget.sh`,
 - policy enforcement script: `./scripts/verify-self-hosted-runner-directive.sh` runs on every `push` in Security workflow.
 
 Self-hosted runner setup:
 
 - `cp .env.runner.example .env.runner`
-- `make runner-up` (builds `docker/runner/Dockerfile`, then starts persistent + 4 ephemeral runners)
+- `make runner-up` (refreshes CPU budget, builds `docker/runner/Dockerfile`, then starts persistent + 4 ephemeral runners using `.env.runner`)
 - `make runner-logs`
 - full guide: `docs/SELF_HOSTED_RUNNER.md`
 

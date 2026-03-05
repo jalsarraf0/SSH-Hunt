@@ -21,12 +21,15 @@ make runner-ps
 make runner-logs
 ```
 
+`make runner-up` uses `.env.runner` as the compose env file, so CPU budget settings are applied at compose render time.
+
 Default stack:
 
 - `1` persistent runner (`github-runner`)
 - `4` ephemeral burst runners (`github-runner-ephemeral-1..4`)
 - all runners use `network_mode: host` so GitHub Actions service-container ports (for example Postgres in CI) are reachable from runner jobs.
 - all runners are built from `docker/runner/Dockerfile`, which preinstalls core CI/CD tools (`ripgrep`, `jq`, `gitleaks`, `osv-scanner`, and downloader utilities).
+- CPU budget directive: total runner pool is capped at `75%` of host cores, split across all 5 containers by `scripts/refresh-runner-cpu-budget.sh`.
 
 Runner labels (all runners) default to:
 

@@ -1,7 +1,8 @@
 SHELL := /bin/bash
 COMPOSE := docker compose
+RUNNER_COMPOSE := docker compose --env-file .env.runner -f docker-compose.runner.yml
 
-.PHONY: ensure-env up down logs ps restart db-migrate db-seed test backup restore doctor firewall-open-24444 firewall-status runner-env runner-up runner-down runner-logs runner-ps
+.PHONY: ensure-env up down logs ps restart db-migrate db-seed test backup restore doctor firewall-open-24444 firewall-status runner-env runner-cpu-budget runner-up runner-down runner-logs runner-ps
 
 ensure-env:
 	@if [ ! -f .env ]; then \
@@ -44,18 +45,22 @@ runner-env:
 		cp .env.runner.example .env.runner; \
 		echo "Created .env.runner from .env.runner.example"; \
 	fi
+	./scripts/refresh-runner-cpu-budget.sh .env.runner
+
+runner-cpu-budget:
+	./scripts/refresh-runner-cpu-budget.sh .env.runner
 
 runner-up: runner-env
-	docker compose -f docker-compose.runner.yml up -d --build
+	$(RUNNER_COMPOSE) up -d --build
 
 runner-down:
-	docker compose -f docker-compose.runner.yml down
+	$(RUNNER_COMPOSE) down
 
 runner-logs:
-	docker compose -f docker-compose.runner.yml logs -f --tail=200
+	$(RUNNER_COMPOSE) logs -f --tail=200
 
 runner-ps:
-	docker compose -f docker-compose.runner.yml ps
+	$(RUNNER_COMPOSE) ps
 
 firewall-open-24444:
 	@if command -v firewall-cmd >/dev/null 2>&1; then \
