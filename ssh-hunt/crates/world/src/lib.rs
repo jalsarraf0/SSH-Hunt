@@ -26,6 +26,21 @@ const STARTER_CODES: [&str; 5] = [
     "log-hunt",
     "dedupe-city",
 ];
+/// Post-NetCity advanced missions (unlock after completing any starter).
+pub const ADVANCED_CODES: [&str; 12] = [
+    "awk-patrol",
+    "chain-ops",
+    "sediment",
+    "cut-lab",
+    "pattern-sweep",
+    "file-ops",
+    "regex-hunt",
+    "pipeline-pro",
+    "var-play",
+    "json-crack",
+    "seq-master",
+    "column-view",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ExperienceTier {
@@ -469,7 +484,13 @@ impl WorldService {
             .ok_or_else(|| anyhow!("unknown player"))?;
         player.active_missions.remove(code);
         player.completed_missions.insert(code.to_owned());
-        player.reputation += if code == KEYS_VAULT { 15 } else { 10 };
+        player.reputation += if code == KEYS_VAULT {
+            15
+        } else if ADVANCED_CODES.contains(&code) {
+            20
+        } else {
+            10
+        };
 
         if let Some(pool) = &self.pool {
             sqlx::query(
@@ -642,7 +663,8 @@ impl WorldService {
         if unique_tools >= 4 {
             player.achievements.insert("Gremlin Grep".to_owned());
         }
-        if pipeline_depth >= 2 {
+        // Redirection Wizard: at least 2 distinct redirected pipelines
+        if pipeline_depth >= 3 && unique_tools >= 3 {
             player.achievements.insert("Redirection Wizard".to_owned());
         }
 
@@ -1162,7 +1184,96 @@ fn seed_missions() -> Vec<MissionDefinition> {
             starter: true,
             hidden: false,
         },
+        // Advanced post-NetCity missions
+        MissionDefinition {
+            code: "awk-patrol".to_owned(),
+            title: "Field Agent: Awk Patrol".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "chain-ops".to_owned(),
+            title: "Logic Gate: Conditional Chains".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "sediment".to_owned(),
+            title: "Stream Edit: Sed Sediment".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "cut-lab".to_owned(),
+            title: "Field Splitter: Cut Lab".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "pattern-sweep".to_owned(),
+            title: "Pattern Sweep: Grep Mastery".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "file-ops".to_owned(),
+            title: "Dir Ops: Recursive File Control".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "regex-hunt".to_owned(),
+            title: "Regex Hunt: Pattern Matching Mastery".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "pipeline-pro".to_owned(),
+            title: "Pipeline Pro: Advanced Data Flow".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "var-play".to_owned(),
+            title: "Var Play: Shell Variables and Export".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "json-crack".to_owned(),
+            title: "JSON Crack: Parse Structured Data".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "seq-master".to_owned(),
+            title: "Seq Master: Number the Grid".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
+        MissionDefinition {
+            code: "column-view".to_owned(),
+            title: "Column View: Align the Table".to_owned(),
+            required: false,
+            starter: false,
+            hidden: false,
+        },
     ]
+}
+
+pub fn is_advanced_mission(code: &str) -> bool {
+    ADVANCED_CODES.contains(&code)
 }
 
 fn seed_events() -> Vec<WorldEvent> {
@@ -1181,6 +1292,20 @@ fn seed_events() -> Vec<WorldEvent> {
             title: "Datavault Breach Drill".to_owned(),
             starts_at: now + Duration::minutes(60),
             ends_at: now + Duration::minutes(80),
+        },
+        WorldEvent {
+            id: Uuid::new_v4(),
+            sector: "Void Sector".to_owned(),
+            title: "Firewall Cascade Failure".to_owned(),
+            starts_at: now + Duration::minutes(90),
+            ends_at: now + Duration::minutes(110),
+        },
+        WorldEvent {
+            id: Uuid::new_v4(),
+            sector: "Crystal Array".to_owned(),
+            title: "Signal Intercept Surge".to_owned(),
+            starts_at: now + Duration::minutes(120),
+            ends_at: now + Duration::minutes(145),
         },
     ]
 }

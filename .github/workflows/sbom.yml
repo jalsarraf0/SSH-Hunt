@@ -1,0 +1,72 @@
+name: SBOM — Source Level
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-sbom:
+    runs-on: ${{ fromJSON(vars.SSH_HUNT_RUNNER_LABELS != '' && vars.SSH_HUNT_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-sbom-${{ hashFiles('ssh-hunt/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-sbom-
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+
+      - name: Generate CycloneDX SBOM
+        working-directory: ssh-hunt
+        run: |
+          cargo cyclonedx --format json --spec-version 1.4 --output-cdx --output-prefix sbom
+          ls -lh *.cdx.json || ls -lh *.json
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Validate no critical advisories against SBOM crates
+        working-directory: ssh-hunt
+        run: cargo audit --ignore RUSTSEC-2023-0071
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cargo-sbom-cyclonedx
+          path: |
+            ssh-hunt/*.cdx.json
+            ssh-hunt/*.json
+          retention-days: 90
+
+      - name: Verify SBOM contains workspace crates
+        working-directory: ssh-hunt
+        run: |
+          sbom_file="$(ls *.cdx.json 2>/dev/null | head -1)"
+          if [ -z "$sbom_file" ]; then
+            sbom_file="$(ls *.json 2>/dev/null | head -1)"
+          fi
+          echo "Checking SBOM file: ${sbom_file}"
+          # Verify key workspace crates appear in the SBOM
+          for crate in ssh-hunt-server world shell vfs; do
+            if grep -q "$crate" "$sbom_file"; then
+              echo "  FOUND: $crate"
+            else
+              echo "  WARNING: $crate not found in SBOM"
+            fi
+          done

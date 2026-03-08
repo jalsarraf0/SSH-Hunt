@@ -79,6 +79,14 @@ jobs:
         run: cargo test -p ssh_hunt_server --locked
         working-directory: ssh-hunt
 
+      - name: Full integration regression suite
+        run: cargo test -p integration_tests --test regression --release --locked
+        working-directory: ssh-hunt
+
+      - name: Full workspace test gate
+        run: cargo test --workspace --all-features --locked
+        working-directory: ssh-hunt
+
       - name: Install Gitleaks
         run: |
           if command -v gitleaks >/dev/null 2>&1; then

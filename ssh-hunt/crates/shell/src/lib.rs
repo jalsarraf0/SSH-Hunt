@@ -147,6 +147,27 @@ impl ShellEngine {
         ctx: &mut ExecutionContext<'_>,
         input: &str,
     ) -> Result<CommandResult, ShellError> {
+        // Handle bare VAR=value assignment before full parsing.
+        let trimmed_input = input.trim();
+        if !trimmed_input.contains(char::is_whitespace) {
+            if let Some(eq) = trimmed_input.find('=') {
+                let lhs = &trimmed_input[..eq];
+                if !lhs.is_empty()
+                    && lhs
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                    && lhs.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                {
+                    let rhs = trimmed_input[eq + 1..].to_owned();
+                    ctx.env.insert(lhs.to_owned(), rhs);
+                    ctx.last_exit = 0;
+                    ctx.env.insert("?".to_owned(), "0".to_owned());
+                    return Ok(CommandResult::ok(String::new()));
+                }
+            }
+        }
+
         let parsed = self.parse(input, &ctx.env)?;
         let mut result = CommandResult::ok(String::new());
 

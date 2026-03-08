@@ -243,6 +243,96 @@ impl Vfs {
         self.remove(cwd, from)
     }
 
+    /// Recursively copy the tree rooted at `from` to `to`.
+    /// If `from` is a plain file this behaves identically to `copy()`.
+    pub fn copy_tree(&mut self, cwd: &str, from: &str, to: &str) -> Result<(), VfsError> {
+        let src = normalize_path(cwd, from)?;
+        let dst = normalize_path(cwd, to)?;
+
+        let src_node = self
+            .nodes
+            .get(&src)
+            .cloned()
+            .ok_or_else(|| VfsError::NotFound(src.clone()))?;
+
+        if src_node.kind == NodeKind::File {
+            return self.copy(cwd, from, to);
+        }
+
+        // Snapshot everything under `src` before we mutate the map.
+        let src_prefix = format!("{src}/");
+        let to_copy: Vec<(String, VfsNode)> = self
+            .nodes
+            .iter()
+            .filter(|(k, _)| *k == &src || k.starts_with(&src_prefix))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        for (path, mut node) in to_copy {
+            let relative = if path == src { "" } else { &path[src.len()..] };
+            let new_path = format!("{dst}{relative}");
+            node.path = new_path.clone();
+            self.nodes.insert(new_path, node);
+        }
+        Ok(())
+    }
+
+    /// Return the `VfsNode` for `path` without consuming it.
+    pub fn stat(&self, cwd: &str, path: &str) -> Result<VfsNode, VfsError> {
+        let normalized = normalize_path(cwd, path)?;
+        self.nodes
+            .get(&normalized)
+            .cloned()
+            .ok_or(VfsError::NotFound(normalized))
+    }
+
+    /// Like `ls()` but returns full `VfsNode` records for each direct child.
+    pub fn ls_nodes(&self, cwd: &str, path: Option<&str>) -> Result<Vec<VfsNode>, VfsError> {
+        let target = normalize_path(cwd, path.unwrap_or("."))?;
+        let node = self
+            .nodes
+            .get(&target)
+            .ok_or_else(|| VfsError::NotFound(target.clone()))?;
+        match node.kind {
+            NodeKind::File => Ok(vec![node.clone()]),
+            NodeKind::Dir => {
+                let prefix = if target == "/" {
+                    "/".to_owned()
+                } else {
+                    format!("{target}/")
+                };
+                let mut result = Vec::new();
+                for (key, n) in &self.nodes {
+                    if key == &target {
+                        continue;
+                    }
+                    if !key.starts_with(&prefix) {
+                        continue;
+                    }
+                    let remain = &key[prefix.len()..];
+                    // Only direct children (no further slashes in the remainder).
+                    if remain.is_empty() || remain.contains('/') {
+                        continue;
+                    }
+                    result.push(n.clone());
+                }
+                Ok(result)
+            }
+        }
+    }
+
+    /// Update the permission bits on a node.
+    pub fn chmod(&mut self, cwd: &str, path: &str, mode: u16) -> Result<(), VfsError> {
+        let normalized = normalize_path(cwd, path)?;
+        let node = self
+            .nodes
+            .get_mut(&normalized)
+            .ok_or_else(|| VfsError::NotFound(normalized.clone()))?;
+        node.meta.perms.mode = mode;
+        node.meta.updated_at = Utc::now();
+        Ok(())
+    }
+
     pub fn ls(&self, cwd: &str, path: Option<&str>) -> Result<Vec<String>, VfsError> {
         let target = normalize_path(cwd, path.unwrap_or("."))?;
         let node = self
@@ -444,5 +534,62 @@ mod tests {
             .unwrap();
         let out = vfs.find("/", "/logs", Some("*.log")).unwrap();
         assert_eq!(out, vec!["/logs/a.log".to_string()]);
+    }
+
+    #[test]
+    fn copy_tree_recursively_copies_directory() {
+        let mut vfs = Vfs::default();
+        vfs.mkdir_p("/", "src/sub", "sys").unwrap();
+        vfs.write_file("/", "/src/a.txt", "alpha", false, "sys")
+            .unwrap();
+        vfs.write_file("/", "/src/sub/b.txt", "beta", false, "sys")
+            .unwrap();
+
+        vfs.copy_tree("/", "/src", "/dst").unwrap();
+
+        assert_eq!(vfs.read_file("/", "/dst/a.txt").unwrap(), "alpha");
+        assert_eq!(vfs.read_file("/", "/dst/sub/b.txt").unwrap(), "beta");
+        // Source must still exist.
+        assert_eq!(vfs.read_file("/", "/src/a.txt").unwrap(), "alpha");
+    }
+
+    #[test]
+    fn stat_returns_node_metadata() {
+        let mut vfs = Vfs::default();
+        vfs.write_file("/", "/note.txt", "hello", false, "sys")
+            .unwrap();
+        let node = vfs.stat("/", "/note.txt").unwrap();
+        assert_eq!(node.kind, NodeKind::File);
+        assert_eq!(node.content.unwrap(), "hello");
+        assert_eq!(node.meta.owner, "sys");
+    }
+
+    #[test]
+    fn chmod_updates_permission_bits() {
+        let mut vfs = Vfs::default();
+        vfs.write_file("/", "/exec.sh", "#!/bin/sh", false, "sys")
+            .unwrap();
+        vfs.chmod("/", "/exec.sh", 0o755).unwrap();
+        let node = vfs.stat("/", "/exec.sh").unwrap();
+        assert_eq!(node.meta.perms.mode, 0o755);
+    }
+
+    #[test]
+    fn ls_nodes_returns_direct_children_only() {
+        let mut vfs = Vfs::default();
+        vfs.mkdir_p("/", "top/sub", "sys").unwrap();
+        vfs.write_file("/", "/top/file.txt", "x", false, "sys")
+            .unwrap();
+        vfs.write_file("/", "/top/sub/nested.txt", "y", false, "sys")
+            .unwrap();
+        let nodes = vfs.ls_nodes("/", Some("/top")).unwrap();
+        // Direct children of /top: "file.txt" and "sub" only.
+        assert_eq!(nodes.len(), 2);
+        let names: Vec<_> = nodes
+            .iter()
+            .map(|n| n.path.rsplit('/').next().unwrap_or(""))
+            .collect();
+        assert!(names.contains(&"file.txt"));
+        assert!(names.contains(&"sub"));
     }
 }
