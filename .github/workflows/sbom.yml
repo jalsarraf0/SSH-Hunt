@@ -35,11 +35,11 @@ jobs:
       - name: Generate CycloneDX SBOM
         working-directory: ssh-hunt
         run: |
-          cargo cyclonedx --format json --spec-version 1.4 --output-prefix sbom
+          cargo cyclonedx --format json --spec-version 1.4
           ls -lh *.cdx.json || ls -lh *.json
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit@0.21.0 --locked
 
       - name: Validate no critical advisories against SBOM crates
         working-directory: ssh-hunt
