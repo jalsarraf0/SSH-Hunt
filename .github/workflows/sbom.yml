@@ -36,7 +36,8 @@ jobs:
         working-directory: ssh-hunt
         run: |
           cargo cyclonedx --format json --spec-version 1.4
-          find . -name "*.cdx.json" | sort | xargs ls -lh
+          echo "Generated SBOM files:"
+          find . -name "*.cdx.json" | sort || true
 
       - name: Install cargo-audit
         run: cargo install cargo-audit@0.21.0 --locked
