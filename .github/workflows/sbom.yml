@@ -40,7 +40,7 @@ jobs:
           find . -name "*.cdx.json" | sort || true
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit@0.21.0 --locked
+        run: cargo install cargo-audit --locked
 
       - name: Validate no critical advisories against SBOM crates
         working-directory: ssh-hunt
