@@ -27,10 +27,7 @@ const STARTER_CODES: [&str; 5] = [
     "dedupe-city",
 ];
 /// Intermediate missions — bridge starters to advanced (15 rep each).
-pub const INTERMEDIATE_CODES: [&str; 2] = [
-    "head-tail",
-    "sort-count",
-];
+pub const INTERMEDIATE_CODES: [&str; 2] = ["head-tail", "sort-count"];
 
 /// Post-NetCity advanced missions (unlock after completing any starter).
 pub const ADVANCED_CODES: [&str; 15] = [

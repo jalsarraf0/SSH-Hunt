@@ -1506,10 +1506,7 @@ pub fn default_registry() -> BuiltinRegistry {
                 let lines: Vec<&str> = content.lines().collect();
                 let n = parse_n_flag(args, lines.len());
                 let start = lines.len().saturating_sub(n);
-                let out: String = lines[start..]
-                    .iter()
-                    .map(|l| format!("{l}\n"))
-                    .collect();
+                let out: String = lines[start..].iter().map(|l| format!("{l}\n")).collect();
                 CommandResult::ok(out)
             }
             Err(_) => CommandResult::ok("No history yet.\n".to_owned()),

@@ -652,7 +652,9 @@ impl GameSession {
                 shell.history.remove(0);
             }
             if res.exit_code == 0 && !res.stdout.is_empty() {
-                shell.command_log.insert(trimmed.to_owned(), res.stdout.clone());
+                shell
+                    .command_log
+                    .insert(trimmed.to_owned(), res.stdout.clone());
             }
             // Write history to VFS so the `history` builtin can read it
             let hist_content = shell
@@ -662,7 +664,9 @@ impl GameSession {
                 .map(|(i, cmd)| format!("  {}  {}", i + 1, cmd))
                 .collect::<Vec<_>>()
                 .join("\n");
-            let _ = shell.vfs.write_file("/", "/tmp/.history", &hist_content, false, "system");
+            let _ = shell
+                .vfs
+                .write_file("/", "/tmp/.history", &hist_content, false, "system");
             (res, parsed)
         };
 
@@ -880,7 +884,12 @@ impl GameSession {
                 };
                 // Validate mission completion by checking command output log
                 if let Some(shell) = &self.shell_state {
-                    if let Err(e) = self.app.world.validate_mission(code, &shell.command_log).await {
+                    if let Err(e) = self
+                        .app
+                        .world
+                        .validate_mission(code, &shell.command_log)
+                        .await
+                    {
                         return Ok((format!("{e}\n"), 1, false));
                     }
                 }
@@ -1544,7 +1553,9 @@ impl GameSession {
         out.push_str("When you get stuck\n");
         out.push_str("  - Run one command at a time before building a pipeline.\n");
         out.push_str("  - Read /missions/rookie-ops.txt and /data/lore/field-manual.txt.\n");
-        out.push_str("  - Use briefing <mission-code> to get a mission-specific starter command.\n");
+        out.push_str(
+            "  - Use briefing <mission-code> to get a mission-specific starter command.\n",
+        );
         out
     }
 
