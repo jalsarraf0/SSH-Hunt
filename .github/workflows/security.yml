@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   security-checks:
-    runs-on: ${{ fromJSON(vars.SSH_HUNT_RUNNER_LABELS != '' && vars.SSH_HUNT_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    runs-on: [self-hosted, gentoo]
     env:
       CARGO_TERM_COLOR: always
     steps:

@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   docker:
-    runs-on: ${{ fromJSON(vars.SSH_HUNT_RUNNER_LABELS != '' && vars.SSH_HUNT_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    runs-on: [self-hosted, gentoo]
     steps:
       - uses: actions/checkout@v4
 
