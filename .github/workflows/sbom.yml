@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   cargo-sbom:
-    runs-on: [self-hosted, gentoo]
+    runs-on: ${{ fromJSON(vars.SSH_HUNT_RUNNER_LABELS || '["ubuntu-latest"]') }}
     env:
       CARGO_TERM_COLOR: always
     steps:

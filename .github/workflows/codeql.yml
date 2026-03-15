@@ -20,7 +20,7 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (Rust)
-    runs-on: [self-hosted, gentoo]
+    runs-on: ${{ fromJSON(vars.SSH_HUNT_RUNNER_LABELS || '["ubuntu-latest"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
