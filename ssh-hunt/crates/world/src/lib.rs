@@ -26,6 +26,12 @@ const STARTER_CODES: [&str; 5] = [
     "log-hunt",
     "dedupe-city",
 ];
+/// Intermediate missions — bridge starters to advanced (15 rep each).
+pub const INTERMEDIATE_CODES: [&str; 2] = [
+    "head-tail",
+    "sort-count",
+];
+
 /// Post-NetCity advanced missions (unlock after completing any starter).
 pub const ADVANCED_CODES: [&str; 15] = [
     "awk-patrol",
@@ -567,6 +573,8 @@ impl WorldService {
             15
         } else if ADVANCED_CODES.contains(&code) {
             20
+        } else if INTERMEDIATE_CODES.contains(&code) {
+            15
         } else {
             10
         };
@@ -1330,6 +1338,33 @@ fn seed_missions() -> Vec<MissionDefinition> {
             "Use find to discover files first. Once you know the path, read it with cat or less.",
             "find /data -name '*.txt'",
         ),
+        // Intermediate missions — bridge starters to advanced
+        MissionDefinition::new(
+            "head-tail",
+            "Slice and Dice: Head and Tail Mastery",
+            false,
+            false,
+            false,
+            50,
+            "Use head and tail to extract specific line ranges from long files without reading the whole thing.",
+            "The blackout flooded every log with noise. You do not have time to read thousands of lines. \
+             Learn to grab the first few, the last few, or skip the header — fast, targeted slicing.",
+            "head -n 5 shows the first 5 lines. tail -n +2 skips the header. Pipe them together to window into any range.",
+            "head -n 10 /logs/neon-gateway.log && tail -n 5 /logs/neon-gateway.log",
+        ).with_validation(vec!["token", "gateway"]),
+        MissionDefinition::new(
+            "sort-count",
+            "Frequency Map: Sort, Uniq, and Count",
+            false,
+            false,
+            false,
+            51,
+            "Build a frequency table by sorting lines, collapsing duplicates, and counting occurrences.",
+            "The recon team dumped a raw signal feed but nobody counted how often each node checked in. \
+             A frequency map reveals which nodes are chattering and which went silent during the blackout.",
+            "sort puts identical lines together. uniq -c counts consecutive duplicates. sort -rn ranks by count, highest first.",
+            "cat /data/signal-feed.txt | sort | uniq -c | sort -rn",
+        ).with_validation(vec!["ghost-rail"]),
         // Advanced post-NetCity missions
         MissionDefinition::new(
             "awk-patrol",

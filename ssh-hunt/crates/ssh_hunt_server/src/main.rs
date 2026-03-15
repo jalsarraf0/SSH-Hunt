@@ -357,6 +357,34 @@ impl ShellState {
             "system",
         );
 
+        // sort-count mission: signal feed with repeated node checkins
+        let _ = vfs.write_file(
+            "/",
+            "/data/signal-feed.txt",
+            "neon-bazaar\n\
+             ghost-rail\n\
+             corp-sim-01\n\
+             ghost-rail\n\
+             vault-sat-9\n\
+             neon-bazaar\n\
+             ghost-rail\n\
+             dark-mirror\n\
+             corp-sim-01\n\
+             ghost-rail\n\
+             neon-bazaar\n\
+             vault-sat-9\n\
+             ghost-rail\n\
+             corp-sim-01\n\
+             dark-mirror\n\
+             ghost-rail\n\
+             neon-bazaar\n\
+             ghost-rail\n\
+             crystal-array\n\
+             ghost-rail\n",
+            false,
+            "system",
+        );
+
         let cwd = "/home/player".to_owned();
         let node = "corp-sim-01".to_owned();
         let mut env = HashMap::new();
