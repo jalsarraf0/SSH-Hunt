@@ -1,0 +1,33 @@
+[package]
+name = "ssh_hunt_server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ssh-hunt-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+clap.workspace = true
+chrono.workspace = true
+protocol = { path = "../protocol" }
+rand.workspace = true
+regex.workspace = true
+russh.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+sha2.workspace = true
+shell = { path = "../shell" }
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ui = { path = "../ui" }
+uuid.workspace = true
+vfs = { path = "../vfs" }
+world = { path = "../world" }
+ssh_hunt_scripts = { path = "../scripts" }

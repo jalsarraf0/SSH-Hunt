@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ssh_hunt}
+      POSTGRES_USER: ${POSTGRES_USER:-ssh_hunt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ssh_hunt_dev}
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ssh_hunt} -d ${POSTGRES_DB:-ssh_hunt}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+
+  ssh-hunt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ssh-hunt:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://ssh_hunt:ssh_hunt_dev@postgres:5432/ssh_hunt}
+      SSH_HUNT_LISTEN: ${SSH_HUNT_LISTEN:-0.0.0.0:22222}
+      GAME_CONFIG_PATH: ${GAME_CONFIG_PATH:-/data/config.yaml}
+      ADMIN_SECRET_PATH: ${ADMIN_SECRET_PATH:-/data/secrets/admin.yaml}
+      HIDDEN_OPS_PATH: ${HIDDEN_OPS_PATH:-/data/secrets/hidden_ops.yaml}
+      SSH_HOST_KEY_PATH: ${SSH_HOST_KEY_PATH:-/data/secrets/ssh_host_ed25519}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "${SSH_HUNT_PORT:-24444}:22222"
+    volumes:
+      - ./volumes/ssh-hunt:/data
+      - ./volumes/backups:/backups
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.50
+    user: "10001:10001"
+    networks:
+      - backend
+      - ingress
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/ssh-hunt-server", "--healthcheck"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  ingress: {}
+  backend:
+    internal: true

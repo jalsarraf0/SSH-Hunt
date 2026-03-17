@@ -1,0 +1,125 @@
+services:
+  github-runner:
+    build:
+      context: .
+      dockerfile: docker/runner/Dockerfile
+    image: ssh-hunt-gh-runner:local
+    container_name: ssh-hunt-gh-runner
+    restart: unless-stopped
+    env_file:
+      - .env.runner
+    environment:
+      RUNNER_SCOPE: repo
+      RUNNER_WORKDIR: /gha-work/ssh-hunt
+      RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-false}
+      RUNNER_NAME: ${RUNNER_NAME:-ssh-hunt-runner-01}
+      RUN_AS_ROOT: "false"
+    network_mode: host
+    cpus: ${RUNNER_CPU_LIMIT_PER_CONTAINER:-0.1500}
+    group_add:
+      - "${RUNNER_DOCKER_GID:-976}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /gha-work/ssh-hunt:/gha-work/ssh-hunt
+    security_opt:
+      - no-new-privileges:true
+
+  github-runner-ephemeral-1:
+    build:
+      context: .
+      dockerfile: docker/runner/Dockerfile
+    image: ssh-hunt-gh-runner:local
+    container_name: ssh-hunt-gh-runner-ephemeral-1
+    restart: unless-stopped
+    env_file:
+      - .env.runner
+    environment:
+      RUNNER_SCOPE: repo
+      RUNNER_WORKDIR: /gha-work/ssh-hunt
+      RUNNER_EPHEMERAL: true
+      RUNNER_NAME: ${RUNNER_NAME_PREFIX:-ssh-hunt-runner}-ephemeral-1
+      RUN_AS_ROOT: "false"
+    network_mode: host
+    cpus: ${RUNNER_CPU_LIMIT_PER_CONTAINER:-0.1500}
+    group_add:
+      - "${RUNNER_DOCKER_GID:-976}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /gha-work/ssh-hunt-eph-1:/gha-work/ssh-hunt
+    security_opt:
+      - no-new-privileges:true
+
+  github-runner-ephemeral-2:
+    build:
+      context: .
+      dockerfile: docker/runner/Dockerfile
+    image: ssh-hunt-gh-runner:local
+    container_name: ssh-hunt-gh-runner-ephemeral-2
+    restart: unless-stopped
+    env_file:
+      - .env.runner
+    environment:
+      RUNNER_SCOPE: repo
+      RUNNER_WORKDIR: /gha-work/ssh-hunt
+      RUNNER_EPHEMERAL: true
+      RUNNER_NAME: ${RUNNER_NAME_PREFIX:-ssh-hunt-runner}-ephemeral-2
+      RUN_AS_ROOT: "false"
+    network_mode: host
+    cpus: ${RUNNER_CPU_LIMIT_PER_CONTAINER:-0.1500}
+    group_add:
+      - "${RUNNER_DOCKER_GID:-976}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /gha-work/ssh-hunt-eph-2:/gha-work/ssh-hunt
+    security_opt:
+      - no-new-privileges:true
+
+  github-runner-ephemeral-3:
+    build:
+      context: .
+      dockerfile: docker/runner/Dockerfile
+    image: ssh-hunt-gh-runner:local
+    container_name: ssh-hunt-gh-runner-ephemeral-3
+    restart: unless-stopped
+    env_file:
+      - .env.runner
+    environment:
+      RUNNER_SCOPE: repo
+      RUNNER_WORKDIR: /gha-work/ssh-hunt
+      RUNNER_EPHEMERAL: true
+      RUNNER_NAME: ${RUNNER_NAME_PREFIX:-ssh-hunt-runner}-ephemeral-3
+      RUN_AS_ROOT: "false"
+    network_mode: host
+    cpus: ${RUNNER_CPU_LIMIT_PER_CONTAINER:-0.1500}
+    group_add:
+      - "${RUNNER_DOCKER_GID:-976}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /gha-work/ssh-hunt-eph-3:/gha-work/ssh-hunt
+    security_opt:
+      - no-new-privileges:true
+
+  github-runner-ephemeral-4:
+    build:
+      context: .
+      dockerfile: docker/runner/Dockerfile
+    image: ssh-hunt-gh-runner:local
+    container_name: ssh-hunt-gh-runner-ephemeral-4
+    restart: unless-stopped
+    env_file:
+      - .env.runner
+    environment:
+      RUNNER_SCOPE: repo
+      RUNNER_WORKDIR: /gha-work/ssh-hunt
+      RUNNER_EPHEMERAL: true
+      RUNNER_NAME: ${RUNNER_NAME_PREFIX:-ssh-hunt-runner}-ephemeral-4
+      RUN_AS_ROOT: "false"
+    network_mode: host
+    cpus: ${RUNNER_CPU_LIMIT_PER_CONTAINER:-0.1500}
+    group_add:
+      - "${RUNNER_DOCKER_GID:-976}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /gha-work/ssh-hunt-eph-4:/gha-work/ssh-hunt
+    security_opt:
+      - no-new-privileges:true

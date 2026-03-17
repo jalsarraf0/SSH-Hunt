@@ -1,0 +1,11 @@
+# Known advisories with no available fix.
+# These are transitive dependencies from sqlx-mysql and russh
+# internals that have no upstream resolution yet.
+
+[advisories]
+ignore = [
+    "RUSTSEC-2023-0071",  # rsa: Marvin Attack (via sqlx-mysql, not used — PostgreSQL only)
+]
+
+[yanked]
+enabled = false  # Yanked crate warnings are informational, not blocking

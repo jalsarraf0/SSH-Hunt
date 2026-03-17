@@ -1,0 +1,15 @@
+[package]
+name = "ssh_hunt_scripts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+protocol = { path = "../protocol" }
+rhai.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
