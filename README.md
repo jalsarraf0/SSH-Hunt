@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/jalsarraf0/SSH-Hunt/actions/workflows/ci.yml/badge.svg)](https://github.com/jalsarraf0/SSH-Hunt/actions/workflows/ci.yml)
 
-> **[Read the full story: The Ghost Rail Conspiracy](STORY.md)** — spoiler-filled narrative guide with the complete conspiracy, cast of 12 NPCs, campaign chapters, and the living world system.
+### **[The Ghost Rail Conspiracy — Full Story & Lore](STORY.md)**
 
 > CI runs on self-hosted runners managed by [haskell-ci-orchestrator](https://github.com/jalsarraf0/haskell-ci-orchestrator) with build attestation. Lint, test, security, SBOM, Docker, and release jobs are unified in a single pipeline.
 
