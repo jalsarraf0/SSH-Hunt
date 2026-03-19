@@ -127,6 +127,35 @@ pub struct WorldEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailMessage {
+    pub id: Uuid,
+    pub from: String,
+    pub subject: String,
+    pub body: String,
+    pub read: bool,
+    pub received_at: DateTime<Utc>,
+}
+
+/// Player's combat stance — determines whether other players can challenge them.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum CombatStance {
+    #[default]
+    Pve,
+    Pvp,
+}
+
+/// A record of an NPC defeat or succession event in the NetCity history ledger.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub event: String,
+    pub npc_name: String,
+    pub npc_role: String,
+    pub generation: u32,
+    pub defeated_by: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScriptRunResult {
     pub output: String,
     pub exit_code: i32,
