@@ -2454,7 +2454,7 @@ fn vfs_pipeline_csv_has_header_and_data() {
 
 #[tokio::test]
 async fn world_has_twelve_script_market_entries() {
-    // All 18 advanced mission codes must be completable (existence + rep check).
+    // All 29 advanced mission codes must be completable (existence + rep check).
     let world = bare_world();
     let p = world
         .login("market-test", "203.0.113.252", &[])
@@ -2464,7 +2464,7 @@ async fn world_has_twelve_script_market_entries() {
         world.complete_mission(p.id, code).await.unwrap();
     }
     let refreshed = world.get_player(p.id).await.unwrap();
-    assert_eq!(refreshed.reputation, 360, "18 advanced × 20 rep = 360");
+    assert_eq!(refreshed.reputation, 580, "29 advanced × 20 rep = 580");
 }
 
 // ── Round 5: tr range expansion ───────────────────────────────────────────────
@@ -2911,13 +2911,13 @@ fn shell_column_table_mode() {
 async fn world_has_fifteen_total_missions() {
     let world = bare_world();
     let p = world.login("adv-test", "203.0.113.1", &[]).await.unwrap();
-    // Complete all 18 advanced codes (world service accepts them directly)
+    // Complete all 29 advanced codes (world service accepts them directly)
     for code in world::ADVANCED_CODES {
         world.complete_mission(p.id, code).await.unwrap();
     }
     let refreshed = world.get_player(p.id).await.unwrap();
-    // 18 advanced missions × 20 rep each = 360
-    assert_eq!(refreshed.reputation, 360);
+    // 29 advanced missions × 20 rep each = 580
+    assert_eq!(refreshed.reputation, 580);
 }
 
 #[tokio::test]

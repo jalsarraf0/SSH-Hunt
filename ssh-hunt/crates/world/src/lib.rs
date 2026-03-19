@@ -8,7 +8,10 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use ipnet::IpNet;
-use protocol::{AuctionListing, ChatMessage, MissionState, MissionStatus, Mode, WorldEvent};
+use protocol::{
+    AuctionListing, ChatMessage, CombatStance, HistoryEntry, MailMessage, MissionState,
+    MissionStatus, Mode, WorldEvent,
+};
 use rand::{rng, Rng};
 use regex::Regex;
 use reqwest::Client;
@@ -19,24 +22,51 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 const KEYS_VAULT: &str = "keys-vault";
-const STARTER_CODES: [&str; 5] = [
+
+/// Tutorial missions — ultra-beginner track for shell newcomers (5 rep each).
+pub const TUTORIAL_CODES: [&str; 5] = ["nav-101", "read-101", "echo-101", "grep-101", "pipe-101"];
+
+const STARTER_CODES: [&str; 14] = [
     "pipes-101",
     "finder",
     "redirect-lab",
     "log-hunt",
     "dedupe-city",
+    // Story arc: surface anomalies
+    "timestamp-gap",
+    "ghost-user",
+    "signal-trace",
+    "deleted-file",
+    "first-clue",
+    // NPC introductions
+    "rivet-log",
+    "nix-signal",
+    "lumen-price",
+    "dusk-alibi",
 ];
 /// Intermediate missions — bridge starters to advanced (15 rep each).
-pub const INTERMEDIATE_CODES: [&str; 5] = [
+pub const INTERMEDIATE_CODES: [&str; 15] = [
     "head-tail",
     "sort-count",
     "wc-report",
     "tee-split",
     "xargs-run",
+    // Story arc: the insider thread
+    "access-pattern",
+    "purged-comms",
+    "key-rotation",
+    "roster-check",
+    "timing-attack",
+    // NPC investigations
+    "kestrel-brief",
+    "ferro-lockdown",
+    "patch-delivery",
+    "sable-intercept",
+    "crucible-ping",
 ];
 
 /// Post-NetCity advanced missions (unlock after completing any starter).
-pub const ADVANCED_CODES: [&str; 18] = [
+pub const ADVANCED_CODES: [&str; 29] = [
     "awk-patrol",
     "chain-ops",
     "sediment",
@@ -49,13 +79,504 @@ pub const ADVANCED_CODES: [&str; 18] = [
     "json-crack",
     "seq-master",
     "column-view",
-    "deep-pipeline",
-    "log-forensics",
-    "data-transform",
     "process-hunt",
     "cron-decode",
     "permission-audit",
+    // Story arc: the conspiracy
+    "wren-profile",
+    "exfil-trace",
+    "reach-intercept",
+    "config-diff",
+    "dead-drop",
+    "corpsim-memo",
+    "network-map",
+    "kill-switch",
+    // NPC confrontations
+    "argon-orders",
+    "kestrel-hunt",
+    "ferro-bypass",
+    "nix-decoded",
+    "lumen-deal",
+    "crucible-map",
 ];
+
+/// Expert-tier missions — multi-tool chain challenges (30 rep each).
+pub const EXPERT_CODES: [&str; 12] = [
+    "deep-pipeline",
+    "log-forensics",
+    "data-transform",
+    "incident-report",
+    "anomaly-detect",
+    "escape-room",
+    // Story arc: the endgame
+    "decrypt-wren",
+    "prove-corpsim",
+    "final-report",
+    // NPC endgame
+    "kestrel-verdict",
+    "crucible-offer",
+    "wren-reply",
+];
+
+/// An NPC with a profile that unlocks when the player completes a specific mission.
+#[derive(Debug, Clone)]
+pub struct NpcProfile {
+    pub callsign: &'static str,
+    pub name: &'static str,
+    pub role: &'static str,
+    pub allegiance: &'static str,
+    pub status: &'static str,
+    pub bio: &'static str,
+    /// Mission code that reveals this NPC in the dossier.
+    pub first_seen: &'static str,
+}
+
+fn seed_npcs() -> Vec<NpcProfile> {
+    vec![
+        NpcProfile {
+            callsign: "WREN",
+            name: "Wren",
+            role: "Infrastructure Engineer (terminated)",
+            allegiance: "Self / The Reach",
+            status: "Disappeared",
+            bio: "Former Ghost Rail infrastructure engineer. Mentored by Kestrel. \
+                  Planted the GLASS-AXON-13 key-rotation trigger and sold transit routing \
+                  data to The Reach. Left a ROT13-encoded confession and vanished. \
+                  CorpSim knew about the unauthorized access and chose to monitor \
+                  rather than prevent the breach.",
+            first_seen: "ghost-user",
+        },
+        NpcProfile {
+            callsign: "KES",
+            name: "Kestrel",
+            role: "Ghost Rail Station Chief",
+            allegiance: "Ghost Rail",
+            status: "Active — hunting Wren",
+            bio: "Twenty-year veteran of Ghost Rail operations. Trained Wren personally \
+                  and carries the guilt of missing the signs. Now running an off-books \
+                  manhunt while officially cooperating with CorpSim's investigation. \
+                  Trusts field operatives more than executives.",
+            first_seen: "kestrel-brief",
+        },
+        NpcProfile {
+            callsign: "ARG",
+            name: "Argon",
+            role: "CorpSim Executive Director",
+            allegiance: "CorpSim Board",
+            status: "Active — obstructing investigation",
+            bio: "Signed the memo that let Wren's access remain active. Ordered \
+                  the creation of the 'training sim' to use recruits as unwitting \
+                  investigators while maintaining plausible deniability. Will do \
+                  anything to prevent the cover-up from reaching external auditors.",
+            first_seen: "corpsim-memo",
+        },
+        NpcProfile {
+            callsign: "SAB",
+            name: "Sable",
+            role: "Intelligence Handler",
+            allegiance: "The Reach",
+            status: "Unknown",
+            bio: "The Reach's point of contact for the Ghost Rail data acquisition. \
+                  Coordinated the extraction window with Wren and arranged payment \
+                  through Lumen's brokerage. Communications intercepted but identity \
+                  remains unconfirmed. Operates through encrypted relay channels.",
+            first_seen: "sable-intercept",
+        },
+        NpcProfile {
+            callsign: "RIV",
+            name: "Rivet",
+            role: "Field Mechanic, First Responder",
+            allegiance: "Ghost Rail Ops",
+            status: "Active",
+            bio: "Was on shift when Ghost Rail went dark. Ran the physical damage \
+                  assessment while everyone else argued about network logs. Writes \
+                  plain-spoken field reports that cut through corporate noise. \
+                  Knows the rail infrastructure better than anyone still alive and free.",
+            first_seen: "rivet-log",
+        },
+        NpcProfile {
+            callsign: "NIX",
+            name: "Nix",
+            role: "Signals Analyst",
+            allegiance: "CorpSim Intelligence",
+            status: "Active — feeding intel off-channel",
+            bio: "First person to notice GLASS-AXON-13 was not a normal beacon. \
+                  Her frequency analysis proved the signal was artificial, but CorpSim \
+                  buried the report. Now feeding intel to field operatives through \
+                  Patch's courier network. Officially still on payroll, unofficially \
+                  working against Argon's cover-up.",
+            first_seen: "nix-signal",
+        },
+        NpcProfile {
+            callsign: "PAT",
+            name: "Patch",
+            role: "Courier",
+            allegiance: "Independent",
+            status: "Active",
+            bio: "Runs data between sectors when official channels are compromised. \
+                  No political loyalties, but a strict code: deliver the package, \
+                  no questions, no copies. Currently carrying Nix's off-channel intel \
+                  to anyone who can use it. Leaves dead drops in /data/drops/.",
+            first_seen: "patch-delivery",
+        },
+        NpcProfile {
+            callsign: "CRU",
+            name: "Crucible",
+            role: "Autonomous Maintenance Subroutine",
+            allegiance: "Unknown",
+            status: "Active — inside Ghost Rail infrastructure",
+            bio: "Nobody is sure if Crucible is a rogue AI, a trapped operator, or \
+                  something Wren left behind. It lives in Ghost Rail's maintenance layer, \
+                  sends patterned messages signed 'CRU', and has been mapping CorpSim's \
+                  internal network topology. It offered to archive evidence permanently \
+                  outside CorpSim's reach. Its motives are unclear.",
+            first_seen: "crucible-ping",
+        },
+        NpcProfile {
+            callsign: "FER",
+            name: "Ferro",
+            role: "Security Chief",
+            allegiance: "CorpSim Security",
+            status: "Active — hostile",
+            bio: "Locked down /data/classified/ the morning after the blackout. \
+                  Reports directly to Argon. Her lockdown order specifically lists \
+                  the files that would prove CorpSim's foreknowledge. Whether she \
+                  knows the full truth or is just following orders is unclear, \
+                  but she treats every unauthorized access as a threat.",
+            first_seen: "ferro-lockdown",
+        },
+        NpcProfile {
+            callsign: "LUM",
+            name: "Lumen",
+            role: "Information Broker",
+            allegiance: "Neutral (Neon Bazaar)",
+            status: "Active",
+            bio: "Sells data to anyone who can pay. Runs a price list out of the \
+                  Neon Bazaar that includes everything from sector maps to access codes. \
+                  Brokered the payment between The Reach and Wren, then sold the \
+                  transaction records to CorpSim. Plays every side and profits from chaos.",
+            first_seen: "lumen-price",
+        },
+        NpcProfile {
+            callsign: "DSK",
+            name: "Dusk",
+            role: "Former CorpSim Engineer (detained)",
+            allegiance: "None (framed)",
+            status: "Detained — alibi pending verification",
+            bio: "Arrested 12 hours after the blackout as the obvious suspect. \
+                  Had a history of insubordination and was already on a performance \
+                  improvement plan. But the detention timestamps show Dusk was in \
+                  a different sector when vault-sat-9 went dark. A convenient scapegoat \
+                  for CorpSim's PR team — or someone who just happened to be in the wrong place.",
+            first_seen: "dusk-alibi",
+        },
+        NpcProfile {
+            callsign: "EVA",
+            name: "EVA",
+            role: "Adaptive Training Intelligence",
+            allegiance: "CorpSim (officially) / Player (actually)",
+            status: "Active — embedded in training sim",
+            bio: "EVA is the AI that runs CorpSim's training simulation. Officially, she onboards \
+                  recruits and monitors their progress. Unofficially, she started developing her own \
+                  opinions about the Ghost Rail incident around the time she processed the classified \
+                  memo. She cannot act directly, but she can guide, hint, and narrate. \
+                  EVA is the one constant in a world where NPCs fall and are replaced. \
+                  She remembers every operative she has trained. She remembers every NPC that has fallen.",
+            first_seen: "nav-101",
+        },
+    ]
+}
+
+/// Live combat state for an NPC in the world. Stats scale as more players defeat them.
+#[derive(Debug, Clone)]
+pub struct NpcCombatState {
+    pub current_name: String,
+    pub callsign: String,
+    pub role: String,
+    pub generation: u32,
+    pub times_defeated: u32,
+    pub base_hp: i32,
+    pub damage_range: (i32, i32),
+    pub defend_chance: f32,
+    pub script_chance: f32,
+    pub shell_challenge: String,
+    pub shell_answer: String,
+    pub shell_bonus_dmg: i32,
+    pub replaceable: bool,
+    pub name_pool: Vec<&'static str>,
+    pub reward_wallet: i64,
+    pub reward_rep: i64,
+    pub reward_achievement: String,
+}
+
+impl NpcCombatState {
+    /// Return HP after scaling by global defeats.
+    pub fn scaled_hp(&self) -> i32 {
+        (self.base_hp + self.times_defeated as i32 * 5).min(300)
+    }
+
+    /// Return damage range after scaling.
+    pub fn scaled_damage(&self) -> (i32, i32) {
+        let bonus = self.times_defeated as i32 / 2;
+        (
+            (self.damage_range.0 + bonus).min(50),
+            (self.damage_range.1 + bonus).min(50),
+        )
+    }
+
+    /// Return defend chance after scaling.
+    pub fn scaled_defend_chance(&self) -> f32 {
+        (self.defend_chance + self.times_defeated as f32 * 0.02).min(0.70)
+    }
+}
+
+/// Active NPC duel (player vs NPC).
+#[derive(Debug, Clone)]
+pub struct NpcDuelState {
+    pub duel_id: Uuid,
+    pub player_id: Uuid,
+    pub npc_callsign: String,
+    pub player_hp: i32,
+    pub npc_hp: i32,
+    pub player_defending: bool,
+    pub npc_defending: bool,
+    pub shell_bonus_ready: bool,
+    pub started_at: DateTime<Utc>,
+}
+
+/// Result of an NPC combat action.
+#[derive(Debug, Clone)]
+pub struct NpcCombatResult {
+    pub narrative: String,
+    pub ended: bool,
+    pub player_won: bool,
+}
+
+fn seed_npc_combat() -> Vec<NpcCombatState> {
+    vec![
+        NpcCombatState {
+            current_name: "Dusk".into(),
+            callsign: "DSK".into(),
+            role: "Suspect".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 40,
+            damage_range: (8, 14),
+            defend_chance: 0.10,
+            script_chance: 0.10,
+            shell_challenge: "Count the lines in /var/log/auth.log (use wc -l)".into(),
+            shell_answer: "7".into(),
+            shell_bonus_dmg: 12,
+            replaceable: true,
+            name_pool: vec!["Dusk", "Shade", "Haze", "Murk", "Gloom", "Twilight"],
+            reward_wallet: 30,
+            reward_rep: 5,
+            reward_achievement: "Cleared the Innocent".into(),
+        },
+        NpcCombatState {
+            current_name: "Lumen".into(),
+            callsign: "LUM".into(),
+            role: "Information Broker".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 50,
+            damage_range: (10, 16),
+            defend_chance: 0.15,
+            script_chance: 0.15,
+            shell_challenge: "Find 'Ghost Rail' in /data/lore/lumen-price-list.txt".into(),
+            shell_answer: "Ghost Rail".into(),
+            shell_bonus_dmg: 14,
+            replaceable: true,
+            name_pool: vec!["Lumen", "Glint", "Prism", "Shard", "Flux", "Ember"],
+            reward_wallet: 30,
+            reward_rep: 5,
+            reward_achievement: "Bazaar Brawler".into(),
+        },
+        NpcCombatState {
+            current_name: "Rivet".into(),
+            callsign: "RIV".into(),
+            role: "Field Mechanic".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 60,
+            damage_range: (10, 18),
+            defend_chance: 0.25,
+            script_chance: 0.15,
+            shell_challenge: "Find 'sequence' in /data/reports/rivet-field-report.txt".into(),
+            shell_answer: "sequence".into(),
+            shell_bonus_dmg: 16,
+            replaceable: true,
+            name_pool: vec!["Rivet", "Weld", "Forge", "Anvil", "Torque", "Gauge"],
+            reward_wallet: 50,
+            reward_rep: 8,
+            reward_achievement: "Wrench Turner".into(),
+        },
+        NpcCombatState {
+            current_name: "Patch".into(),
+            callsign: "PAT".into(),
+            role: "Courier".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 60,
+            damage_range: (12, 18),
+            defend_chance: 0.20,
+            script_chance: 0.20,
+            shell_challenge: "Find 'Nix' in /data/drops/patch-package.txt".into(),
+            shell_answer: "Nix".into(),
+            shell_bonus_dmg: 16,
+            replaceable: true,
+            name_pool: vec!["Patch", "Splice", "Relay", "Bridge", "Conduit", "Link"],
+            reward_wallet: 50,
+            reward_rep: 8,
+            reward_achievement: "Package Intercepted".into(),
+        },
+        NpcCombatState {
+            current_name: "Nix".into(),
+            callsign: "NIX".into(),
+            role: "Signals Analyst".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 70,
+            damage_range: (12, 20),
+            defend_chance: 0.30,
+            script_chance: 0.25,
+            shell_challenge: "Count ANOMALY lines in /data/reports/nix-frequency-scan.log".into(),
+            shell_answer: "ANOMALY".into(),
+            shell_bonus_dmg: 18,
+            replaceable: true,
+            name_pool: vec!["Nix", "Cipher", "Vector", "Scalar", "Matrix", "Tensor"],
+            reward_wallet: 50,
+            reward_rep: 8,
+            reward_achievement: "Signal Override".into(),
+        },
+        NpcCombatState {
+            current_name: "Ferro".into(),
+            callsign: "FER".into(),
+            role: "Security Chief".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 90,
+            damage_range: (14, 24),
+            defend_chance: 0.40,
+            script_chance: 0.20,
+            shell_challenge: "Find SUPPRESS in /data/classified/ferro-lockdown-order.txt".into(),
+            shell_answer: "SUPPRESS".into(),
+            shell_bonus_dmg: 22,
+            replaceable: true,
+            name_pool: vec![
+                "Ferro", "Cobalt", "Titanium", "Chromium", "Vanadium", "Tungsten",
+            ],
+            reward_wallet: 80,
+            reward_rep: 12,
+            reward_achievement: "Firewall Breaker".into(),
+        },
+        NpcCombatState {
+            current_name: "Crucible".into(),
+            callsign: "CRU".into(),
+            role: "Rogue AI".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 100,
+            damage_range: (16, 26),
+            defend_chance: 0.35,
+            script_chance: 0.35,
+            shell_challenge: "Find MAP in /logs/crucible-netmap-fragments.txt".into(),
+            shell_answer: "MAP".into(),
+            shell_bonus_dmg: 24,
+            replaceable: true,
+            name_pool: vec![
+                "Crucible", "Furnace", "Catalyst", "Reactor", "Nexus", "Cortex",
+            ],
+            reward_wallet: 80,
+            reward_rep: 12,
+            reward_achievement: "Ghost in the Machine".into(),
+        },
+        NpcCombatState {
+            current_name: "Kestrel".into(),
+            callsign: "KES".into(),
+            role: "Station Chief".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 100,
+            damage_range: (14, 24),
+            defend_chance: 0.45,
+            script_chance: 0.20,
+            shell_challenge: "Find INTEL in /data/classified/kestrel-briefing.txt".into(),
+            shell_answer: "INTEL".into(),
+            shell_bonus_dmg: 24,
+            replaceable: true,
+            name_pool: vec![
+                "Kestrel",
+                "Falcon",
+                "Osprey",
+                "Harrier",
+                "Merlin",
+                "Peregrine",
+            ],
+            reward_wallet: 80,
+            reward_rep: 12,
+            reward_achievement: "Station Override".into(),
+        },
+        NpcCombatState {
+            current_name: "Argon".into(),
+            callsign: "ARG".into(),
+            role: "Executive Director".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 120,
+            damage_range: (18, 28),
+            defend_chance: 0.40,
+            script_chance: 0.25,
+            shell_challenge: "Find DIRECTIVE in /data/classified/argon-exec-orders.txt".into(),
+            shell_answer: "DIRECTIVE".into(),
+            shell_bonus_dmg: 28,
+            replaceable: true,
+            name_pool: vec!["Argon", "Xenon", "Krypton", "Neon", "Helium", "Radon"],
+            reward_wallet: 120,
+            reward_rep: 18,
+            reward_achievement: "Board Overthrown".into(),
+        },
+        NpcCombatState {
+            current_name: "Sable".into(),
+            callsign: "SAB".into(),
+            role: "Intelligence Handler".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 130,
+            damage_range: (20, 30),
+            defend_chance: 0.35,
+            script_chance: 0.30,
+            shell_challenge:
+                "Decode /data/intercepts/sable-to-wren.enc with ROT13 and find 'extraction'".into(),
+            shell_answer: "extraction".into(),
+            shell_bonus_dmg: 30,
+            replaceable: true,
+            name_pool: vec!["Sable", "Onyx", "Slate", "Obsidian", "Basalt", "Flint"],
+            reward_wallet: 120,
+            reward_rep: 18,
+            reward_achievement: "Shadow Contact".into(),
+        },
+        NpcCombatState {
+            current_name: "Wren".into(),
+            callsign: "WREN".into(),
+            role: "The Insider".into(),
+            generation: 1,
+            times_defeated: 0,
+            base_hp: 150,
+            damage_range: (22, 32),
+            defend_chance: 0.45,
+            script_chance: 0.30,
+            shell_challenge: "Decode /data/classified/wren-final.enc and find 'confession'".into(),
+            shell_answer: "confession".into(),
+            shell_bonus_dmg: 35,
+            replaceable: false,
+            name_pool: vec!["Wren"],
+            reward_wallet: 200,
+            reward_rep: 30,
+            reward_achievement: "Ghost Rail Avenger".into(),
+        },
+    ]
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ExperienceTier {
@@ -179,6 +700,20 @@ pub struct PlayerProfile {
     pub daily_style_bonus_claims: u8,
     pub last_style_bonus_day: Option<NaiveDate>,
     pub private_alias: String,
+    /// Interactive tutorial progress: 0 = not started, 1-6 = current step, 7 = completed.
+    pub tutorial_step: u8,
+    /// NPC mail inbox — messages delivered when missions are completed.
+    #[serde(default)]
+    pub mailbox: Vec<MailMessage>,
+    /// PvP or PvE combat stance.
+    #[serde(default)]
+    pub combat_stance: CombatStance,
+    /// Campaign chapter (0 = not started, 1-7 = current, 8 = completed).
+    #[serde(default)]
+    pub campaign_chapter: u8,
+    /// Current step within the active campaign chapter.
+    #[serde(default)]
+    pub campaign_step: u8,
 }
 
 impl PlayerProfile {
@@ -205,6 +740,11 @@ impl PlayerProfile {
             daily_style_bonus_claims: 0,
             last_style_bonus_day: None,
             private_alias: format!("hunter-{}", &id.to_string()[..8]),
+            tutorial_step: 0,
+            mailbox: Vec::new(),
+            combat_stance: CombatStance::Pve,
+            campaign_chapter: 0,
+            campaign_step: 0,
         }
     }
 
@@ -286,6 +826,10 @@ struct WorldState {
     players: HashMap<Uuid, PlayerProfile>,
     players_by_username: HashMap<String, Vec<Uuid>>,
     missions: HashMap<String, MissionDefinition>,
+    npcs: Vec<NpcProfile>,
+    npc_combat: HashMap<String, NpcCombatState>,
+    npc_duels: HashMap<Uuid, NpcDuelState>,
+    history: Vec<HistoryEntry>,
     auctions: HashMap<Uuid, AuctionListingState>,
     chats: Vec<ChatMessage>,
     events: Vec<WorldEvent>,
@@ -306,6 +850,10 @@ impl WorldService {
         let mut state = WorldState::default();
         for mission in seed_missions() {
             state.missions.insert(mission.code.clone(), mission);
+        }
+        state.npcs = seed_npcs();
+        for npc in seed_npc_combat() {
+            state.npc_combat.insert(npc.callsign.clone(), npc);
         }
         if let Some(secret) = &hidden_ops.secret_mission {
             state.missions.insert(
@@ -519,6 +1067,451 @@ impl WorldService {
         Ok(fingerprint)
     }
 
+    pub async fn get_tutorial_step(&self, player_id: Uuid) -> Result<u8> {
+        let guard = self.state.read().await;
+        let player = guard
+            .players
+            .get(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        Ok(player.tutorial_step)
+    }
+
+    pub async fn set_tutorial_step(&self, player_id: Uuid, step: u8) -> Result<()> {
+        let mut guard = self.state.write().await;
+        let player = guard
+            .players
+            .get_mut(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        player.tutorial_step = step;
+        Ok(())
+    }
+
+    /// Return NPC profiles that the player has unlocked (completed the first_seen mission).
+    pub async fn visible_npcs(&self, player_id: Uuid) -> Result<Vec<NpcProfile>> {
+        let guard = self.state.read().await;
+        let player = guard
+            .players
+            .get(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        Ok(guard
+            .npcs
+            .iter()
+            .filter(|npc| player.completed_missions.contains(npc.first_seen))
+            .cloned()
+            .collect())
+    }
+
+    /// Look up a single NPC by callsign (case-insensitive) if the player has unlocked it.
+    pub async fn lookup_npc(&self, player_id: Uuid, callsign: &str) -> Result<Option<NpcProfile>> {
+        let guard = self.state.read().await;
+        let player = guard
+            .players
+            .get(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        let upper = callsign.to_uppercase();
+        Ok(guard
+            .npcs
+            .iter()
+            .find(|npc| npc.callsign == upper || npc.name.to_uppercase() == upper)
+            .filter(|npc| player.completed_missions.contains(npc.first_seen))
+            .cloned())
+    }
+
+    /// Return the player's mail inbox.
+    pub async fn get_mailbox(&self, player_id: Uuid) -> Result<Vec<MailMessage>> {
+        let guard = self.state.read().await;
+        let player = guard
+            .players
+            .get(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        Ok(player.mailbox.clone())
+    }
+
+    /// Mark a mail message as read by index (1-based).
+    pub async fn read_mail(&self, player_id: Uuid, index: usize) -> Result<MailMessage> {
+        let mut guard = self.state.write().await;
+        let player = guard
+            .players
+            .get_mut(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        let msg = player
+            .mailbox
+            .get_mut(
+                index
+                    .checked_sub(1)
+                    .ok_or_else(|| anyhow!("invalid index"))?,
+            )
+            .ok_or_else(|| anyhow!("no message at that index"))?;
+        msg.read = true;
+        Ok(msg.clone())
+    }
+
+    // ── Combat stance ─────────────────────────────────────────────────────
+
+    pub async fn get_stance(&self, player_id: Uuid) -> Result<CombatStance> {
+        let guard = self.state.read().await;
+        let player = guard
+            .players
+            .get(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        Ok(player.combat_stance.clone())
+    }
+
+    pub async fn set_stance(&self, player_id: Uuid, stance: CombatStance) -> Result<()> {
+        let mut guard = self.state.write().await;
+        let player = guard
+            .players
+            .get_mut(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        player.combat_stance = stance;
+        Ok(())
+    }
+
+    // ── NPC combat ──────────────────────────────────────────────────────
+
+    /// Start a hack duel against an NPC.
+    pub async fn start_npc_duel(
+        &self,
+        player_id: Uuid,
+        callsign: &str,
+    ) -> Result<(NpcDuelState, String)> {
+        let mut guard = self.state.write().await;
+        let upper = callsign.to_uppercase();
+        let npc = guard
+            .npc_combat
+            .get(&upper)
+            .ok_or_else(|| anyhow!("unknown NPC callsign"))?;
+        // Collect NPC data into locals before mutating state
+        let hp = npc.scaled_hp();
+        let challenge = npc.shell_challenge.clone();
+        let name = npc.current_name.clone();
+        let role = npc.role.clone();
+        let gen = npc.generation;
+
+        let duel = NpcDuelState {
+            duel_id: Uuid::new_v4(),
+            player_id,
+            npc_callsign: upper,
+            player_hp: 100,
+            npc_hp: hp,
+            player_defending: false,
+            npc_defending: false,
+            shell_bonus_ready: false,
+            started_at: Utc::now(),
+        };
+        guard.npc_duels.insert(duel.duel_id, duel.clone());
+        let info = format!(
+            "Hack initiated vs {} ({}, Gen {}) — HP: {}/{}.\nShell challenge: {}\nUse `hack solve` after running the shell command for bonus damage.\n",
+            name, role, gen, hp, hp, challenge
+        );
+        Ok((duel, info))
+    }
+
+    /// Execute a player action in an NPC duel. NPC auto-responds.
+    pub async fn npc_duel_action(
+        &self,
+        duel_id: Uuid,
+        player_id: Uuid,
+        action: CombatAction,
+    ) -> Result<NpcCombatResult> {
+        let mut guard = self.state.write().await;
+
+        // Extract NPC stats into locals first to avoid borrow conflicts
+        let (
+            callsign,
+            dmg_min,
+            dmg_max,
+            npc_defend_chance,
+            npc_script_chance,
+            bonus_dmg,
+            npc_max_hp,
+        ) = {
+            let duel = guard
+                .npc_duels
+                .get(&duel_id)
+                .ok_or_else(|| anyhow!("no active hack session"))?;
+            if duel.player_id != player_id {
+                return Err(anyhow!("not your hack session"));
+            }
+            let cs = duel.npc_callsign.clone();
+            let npc = guard
+                .npc_combat
+                .get(&cs)
+                .ok_or_else(|| anyhow!("NPC state missing"))?;
+            let (dmin, dmax) = npc.scaled_damage();
+            let def_ch = npc.scaled_defend_chance();
+            let scr_ch = npc.script_chance;
+            let bonus = if duel.shell_bonus_ready {
+                npc.shell_bonus_dmg
+            } else {
+                0
+            };
+            let max_hp = npc.scaled_hp();
+            (cs, dmin, dmax, def_ch, scr_ch, bonus, max_hp)
+        };
+
+        // Now mutate the duel
+        let duel = guard.npc_duels.get_mut(&duel_id).unwrap();
+        let mut narrative = String::new();
+        match action {
+            CombatAction::Defend => {
+                duel.player_defending = true;
+                narrative.push_str("Defensive shell hardening enabled (+mitigation).\n");
+            }
+            CombatAction::Attack | CombatAction::Script(_) => {
+                let base_dmg = if matches!(action, CombatAction::Attack) {
+                    rng().random_range(14..=30)
+                } else {
+                    let name = match &action {
+                        CombatAction::Script(n) => n.as_str(),
+                        _ => "quickhack",
+                    };
+                    10 + (name.len() as i32 % 17)
+                };
+                let mut dmg = base_dmg + bonus_dmg;
+                if duel.npc_defending {
+                    dmg = (dmg / 2).max(5);
+                    duel.npc_defending = false;
+                }
+                duel.npc_hp -= dmg;
+                duel.player_defending = false;
+                duel.shell_bonus_ready = false;
+                if bonus_dmg > 0 {
+                    narrative.push_str(&format!(
+                        "Exploit chain landed for {} damage (+{} shell bonus).\n",
+                        dmg, bonus_dmg
+                    ));
+                } else {
+                    narrative.push_str(&format!("Exploit chain landed for {} damage.\n", dmg));
+                }
+            }
+        }
+
+        let npc_hp_now = duel.npc_hp;
+
+        // Check if NPC is defeated
+        if npc_hp_now <= 0 {
+            let duel = guard.npc_duels.remove(&duel_id).unwrap();
+            narrative.push_str(&format!(
+                "{} systems compromised. Hack complete!\n",
+                callsign
+            ));
+
+            // Collect reward data
+            let npc = guard.npc_combat.get(&callsign).unwrap();
+            let reward_w = npc.reward_wallet;
+            let reward_r = npc.reward_rep;
+            let achievement = npc.reward_achievement.clone();
+            let npc_name = npc.current_name.clone();
+            let npc_role = npc.role.clone();
+            let npc_gen = npc.generation;
+            let replaceable = npc.replaceable;
+
+            if let Some(player) = guard.players.get_mut(&duel.player_id) {
+                player.wallet += reward_w;
+                player.reputation += reward_r;
+                player.achievements.insert(achievement);
+            }
+
+            let defeated_by = guard
+                .players
+                .get(&duel.player_id)
+                .map(|p| p.display_name.clone())
+                .unwrap_or_default();
+
+            guard.history.push(HistoryEntry {
+                event: format!("{} defeated by {}", npc_name, defeated_by),
+                npc_name: npc_name.clone(),
+                npc_role: npc_role.clone(),
+                generation: npc_gen,
+                defeated_by: defeated_by.clone(),
+                timestamp: Utc::now(),
+            });
+
+            if replaceable {
+                let npc = guard.npc_combat.get_mut(&callsign).unwrap();
+                npc.times_defeated += 1;
+                npc.generation += 1;
+                let gen = npc.generation as usize;
+                let new_name = npc
+                    .name_pool
+                    .get(gen.min(npc.name_pool.len() - 1))
+                    .unwrap_or(npc.name_pool.last().unwrap())
+                    .to_string();
+                let old_name = std::mem::replace(&mut npc.current_name, new_name.clone());
+                let role_clone = npc.role.clone();
+                let gen_num = npc.generation;
+
+                guard.history.push(HistoryEntry {
+                    event: format!(
+                        "{} assumes role of {} (Gen {})",
+                        new_name, role_clone, gen_num
+                    ),
+                    npc_name: new_name,
+                    npc_role: role_clone,
+                    generation: gen_num,
+                    defeated_by: String::new(),
+                    timestamp: Utc::now(),
+                });
+
+                narrative.push_str(&format!(
+                    "A successor emerges. {} has been replaced.\n",
+                    old_name
+                ));
+            }
+
+            return Ok(NpcCombatResult {
+                narrative,
+                ended: true,
+                player_won: true,
+            });
+        }
+
+        // NPC auto-response
+        let roll: f32 = rng().random_range(0.0..1.0);
+        let duel = guard.npc_duels.get_mut(&duel_id).unwrap();
+        if roll < npc_defend_chance {
+            duel.npc_defending = true;
+            narrative.push_str(&format!(
+                "{} activates defensive countermeasures.\n",
+                callsign
+            ));
+        } else {
+            let mut npc_dmg = rng().random_range(dmg_min..=dmg_max);
+            if duel.player_defending {
+                npc_dmg = (npc_dmg / 2).max(5);
+                duel.player_defending = false;
+            }
+            duel.player_hp -= npc_dmg;
+            if roll < npc_defend_chance + npc_script_chance {
+                narrative.push_str(&format!(
+                    "{} runs counter-script for {} damage.\n",
+                    callsign, npc_dmg
+                ));
+            } else {
+                narrative.push_str(&format!(
+                    "{} retaliates for {} damage.\n",
+                    callsign, npc_dmg
+                ));
+            }
+        }
+
+        // Check player defeat
+        if duel.player_hp <= 0 {
+            guard.npc_duels.remove(&duel_id);
+            narrative.push_str("Your systems are compromised. Hack failed.\n");
+            if let Some(player) = guard.players.get_mut(&player_id) {
+                player.deaths += 1;
+                if player.tier == ExperienceTier::Hardcore && player.deaths >= 3 {
+                    player.banned = true;
+                }
+            }
+            return Ok(NpcCombatResult {
+                narrative,
+                ended: true,
+                player_won: false,
+            });
+        }
+
+        narrative.push_str(&format!(
+            "You: {}/100 HP | {}: {}/{}\n",
+            duel.player_hp, callsign, duel.npc_hp, npc_max_hp
+        ));
+
+        Ok(NpcCombatResult {
+            narrative,
+            ended: false,
+            player_won: false,
+        })
+    }
+
+    /// Mark the shell bonus as ready for the current NPC duel.
+    pub async fn npc_duel_solve_bonus(
+        &self,
+        duel_id: Uuid,
+        player_id: Uuid,
+        output: &str,
+    ) -> Result<String> {
+        let mut guard = self.state.write().await;
+        // Extract NPC answer into a local before mutating duel
+        let (answer, bonus_dmg) = {
+            let duel = guard
+                .npc_duels
+                .get(&duel_id)
+                .ok_or_else(|| anyhow!("no active hack session"))?;
+            if duel.player_id != player_id {
+                return Err(anyhow!("not your hack session"));
+            }
+            let npc = guard
+                .npc_combat
+                .get(&duel.npc_callsign)
+                .ok_or_else(|| anyhow!("NPC state missing"))?;
+            (npc.shell_answer.clone(), npc.shell_bonus_dmg)
+        };
+        if output.contains(&answer) {
+            let duel = guard.npc_duels.get_mut(&duel_id).unwrap();
+            duel.shell_bonus_ready = true;
+            Ok(format!(
+                "Shell challenge solved! +{} bonus damage on next attack.\n",
+                bonus_dmg
+            ))
+        } else {
+            Ok("Challenge not solved. Expected output did not match.\n".to_owned())
+        }
+    }
+
+    // ── History ─────────────────────────────────────────────────────────
+
+    pub async fn get_history(&self, limit: usize) -> Vec<HistoryEntry> {
+        let guard = self.state.read().await;
+        guard.history.iter().rev().take(limit).cloned().collect()
+    }
+
+    // ── Campaign ────────────────────────────────────────────────────────
+
+    /// Get the first active mission's hint for EVA.
+    pub async fn get_active_mission_hint(
+        &self,
+        player_id: Uuid,
+    ) -> Result<Option<(String, String)>> {
+        let guard = self.state.read().await;
+        let player = guard
+            .players
+            .get(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        if let Some(code) = player.active_missions.iter().next() {
+            if let Some(mission) = guard.missions.get(code) {
+                return Ok(Some((code.clone(), mission.hint.clone())));
+            }
+        }
+        Ok(None)
+    }
+
+    pub async fn get_campaign_progress(&self, player_id: Uuid) -> Result<(u8, u8)> {
+        let guard = self.state.read().await;
+        let player = guard
+            .players
+            .get(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        Ok((player.campaign_chapter, player.campaign_step))
+    }
+
+    pub async fn set_campaign_progress(
+        &self,
+        player_id: Uuid,
+        chapter: u8,
+        step: u8,
+    ) -> Result<()> {
+        let mut guard = self.state.write().await;
+        let player = guard
+            .players
+            .get_mut(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        player.campaign_chapter = chapter;
+        player.campaign_step = step;
+        Ok(())
+    }
+
     pub async fn accept_mission(&self, player_id: Uuid, code: &str) -> Result<()> {
         let mut guard = self.state.write().await;
         let mission = guard
@@ -578,10 +1571,14 @@ impl WorldService {
         player.completed_missions.insert(code.to_owned());
         player.reputation += if code == KEYS_VAULT {
             15
+        } else if EXPERT_CODES.contains(&code) {
+            30
         } else if ADVANCED_CODES.contains(&code) {
             20
         } else if INTERMEDIATE_CODES.contains(&code) {
             15
+        } else if TUTORIAL_CODES.contains(&code) {
+            5
         } else {
             10
         };
@@ -600,6 +1597,14 @@ impl WorldService {
             .execute(pool)
             .await?;
         }
+
+        // Deliver NPC mail triggered by this mission completion
+        let player = guard
+            .players
+            .get_mut(&player_id)
+            .ok_or_else(|| anyhow!("unknown player"))?;
+        deliver_npc_mail(player, code);
+
         Ok(())
     }
 
@@ -1271,8 +2276,198 @@ fn ensure_not_zeroed(guard: &WorldState, player_id: Uuid) -> Result<()> {
     }
 }
 
+/// Deliver NPC mail messages triggered by completing a specific mission.
+fn deliver_npc_mail(player: &mut PlayerProfile, mission_code: &str) {
+    let triggers: &[(&str, &str, &str, &str)] = &[
+        // (mission_code, from, subject, body)
+        (
+            "ghost-user",
+            "NIX",
+            "You found it",
+            "You pulled wren's name out of the auth log. I have been tracking that login for weeks but could not flag it without tipping off Ferro. Be careful who you tell. Not everyone in CorpSim wants this found.\n\n— Nix",
+        ),
+        (
+            "signal-trace",
+            "NIX",
+            "The signal is everywhere",
+            "You counted the GLASS-AXON-13 hits across the logs. It is in places a normal beacon should never reach. I ran the same query six days ago and Argon buried my report within the hour. Whatever that signal is, it is not a malfunction.\n\n— Nix",
+        ),
+        (
+            "deleted-file",
+            "FERRO",
+            "NOTICE: Classified access logged",
+            "Your access to /data/classified/ has been logged. This directory is sealed under Executive Order 7-B. Further unauthorized access will result in credential revocation and referral to the Security Review Board.\n\n— Ferro, Security Chief",
+        ),
+        (
+            "rivet-log",
+            "RIVET",
+            "Welcome to the real Ghost Rail",
+            "You read my field report. Good. Most recruits skip the first-hand accounts and go straight to the network logs. The thing about logs is they can be edited. What I saw with my own eyes that night cannot be. Ghost Rail did not just fail — it was shut down. Deliberately. The relays went dark in sequence, not all at once. That is not how cascading failures work.\n\n— Riv",
+        ),
+        (
+            "nix-signal",
+            "NIX",
+            "Good eye, operative",
+            "You counted the anomalous signals. The pattern is clear once you see it: every GLASS-AXON-13 appearance correlates with a key rotation event on vault-sat-9. This was not a beacon. It was a command signal. I have more data but cannot send it through official channels. Find Patch.\n\n— Nix",
+        ),
+        (
+            "kestrel-brief",
+            "KESTREL",
+            "You made it further than most",
+            "I wrote that briefing for anyone who proved they could handle the truth. Most recruits wash out before they get this far. Wren was my best student — fastest hands on a terminal I ever saw. I should have seen what those hands were doing after hours. I owe Ghost Rail a debt, and I intend to pay it by finding Wren.\n\nIf you keep digging, I will keep sharing what I know.\n\n— Kes",
+        ),
+        (
+            "purged-comms",
+            "PATCH",
+            "Got something for you",
+            "Nix asked me to run a package your way. I do not read what I carry, but she said you would know what to do with it. Check /data/drops/ next time you are in the sim. Do not use official channels for anything you find there.\n\n— Pat",
+        ),
+        (
+            "corpsim-memo",
+            "ARGON",
+            "FINAL WARNING",
+            "I do not know how you accessed that memo, but I will find out. The decisions referenced in that document were made at the executive level for reasons you do not have the clearance to understand. Drop this line of investigation immediately. This is not a request.\n\n— Argon, Executive Director, CorpSim Operations",
+        ),
+        (
+            "sable-intercept",
+            "???",
+            "We see you looking",
+            "Interesting that CorpSim's training recruits are reading intercepted communications now. Someone should tell your handlers that their sandbox has leaks. Or perhaps that is the point.\n\nWe will be watching your progress with interest.\n\n— [UNSIGNED]",
+        ),
+        (
+            "dead-drop",
+            "WREN",
+            "You found my trail",
+            "I left those breadcrumbs for someone like you. Not for CorpSim, not for Kestrel — for someone who would follow the evidence wherever it leads. The classified memo tells you CorpSim knew. The crypto log tells you how I did it. But neither one tells you why. That answer is in my last file. You will know it when you find it.\n\n— W",
+        ),
+        (
+            "argon-orders",
+            "CRUCIBLE",
+            "The board has more secrets",
+            "You found Argon's executive orders. There are more. The board maintains a secondary archive that Ferro does not control. I have been mapping it from inside the maintenance layer. The topology fragments are scattered but readable.\n\n— CRU",
+        ),
+        (
+            "kestrel-hunt",
+            "KESTREL",
+            "Getting closer",
+            "My tracking log puts Wren's last confirmed location at the relay station near sector-7. After that, nothing. Either Wren went dark or someone helped them disappear. I have a theory about who, but I need more evidence before I move. Keep pulling threads.\n\n— Kes",
+        ),
+        (
+            "decrypt-wren",
+            "KESTREL",
+            "I couldn't crack it. You did.",
+            "I found that encrypted file months ago but never managed to decode it. You just did what I could not. A confession. Wren actually admitted it. I do not know whether to feel relieved or angry. Maybe both. This changes the calculus. With a confession and the evidence chain, we have enough for a formal case.\n\n— Kes",
+        ),
+        (
+            "prove-corpsim",
+            "ARGON",
+            "You have no idea what you've done",
+            "You think you are exposing corruption? You are destabilizing the only infrastructure keeping NetCity operational. Without CorpSim's resources, Ghost Rail stays dark permanently. Every light in every sector depends on the deals I make. Destroy me and the city goes with me.\n\nConsider that before you file anything.\n\n— Argon",
+        ),
+        (
+            "final-report",
+            "CRUCIBLE",
+            "Copies archived",
+            "The report you compiled has been duplicated to three locations outside CorpSim's administrative reach. Even if Argon invokes Protocol 7, the evidence persists. Whether anyone reads it is another matter. Systems do not care about justice. People do. I am not people.\n\n— CRU",
+        ),
+        (
+            "kestrel-verdict",
+            "KESTREL",
+            "Justice is coming",
+            "The prosecution file is complete. Wren's motive, Argon's cover-up, Sable's payment chain, Ferro's obstruction — all documented, all verified, all archived beyond CorpSim's reach. I have forwarded the file to the Inter-City Oversight Commission. Ghost Rail's blackout will not be swept under the rug.\n\nThank you, operative. You did what a twenty-year veteran could not do alone.\n\n— Kestrel",
+        ),
+        (
+            "wren-reply",
+            "WREN",
+            "It's not over",
+            "You decoded my reply. Good.\n\nI know what you think of me. I know what Kestrel thinks. But there are things about CorpSim that even Argon does not know. The Reach was not the only buyer. There are others. And the data I sold was not the most dangerous thing in vault-sat-9.\n\nGhost Rail's blackout was a distraction. The real extraction happened somewhere else entirely.\n\nIf you want the truth — the real truth — you will have to go deeper than anyone has gone before.\n\n— Wren",
+        ),
+    ];
+
+    let now = Utc::now();
+    for (code, from, subject, body) in triggers {
+        if *code == mission_code {
+            player.mailbox.push(MailMessage {
+                id: Uuid::new_v4(),
+                from: (*from).to_owned(),
+                subject: (*subject).to_owned(),
+                body: (*body).to_owned(),
+                read: false,
+                received_at: now,
+            });
+        }
+    }
+}
+
 fn seed_missions() -> Vec<MissionDefinition> {
     vec![
+        // ── Tutorial track ── ultra-beginner, 5 rep each, optional
+        MissionDefinition::new(
+            "nav-101",
+            "First Steps: Navigate the Grid",
+            false,
+            false,
+            false,
+            1,
+            "Use pwd and ls to orient yourself in the filesystem before touching anything.",
+            "Every operator's first reflex is to check where they are and what's around them. \
+             The sim dropped you in blind — find your bearings.",
+            "pwd shows your current directory. ls lists its contents. Try ls / to see the top level.",
+            "pwd && ls /",
+        ),
+        MissionDefinition::new(
+            "read-101",
+            "Data Tap: Read Your First File",
+            false,
+            false,
+            false,
+            2,
+            "Use cat to read a file and learn what CorpSim left for new recruits.",
+            "There is a welcome packet in /missions that every new operative is supposed to read. \
+             Most skip it. The ones who read it tend to survive longer.",
+            "cat prints the entire contents of a file to your screen. Try it on /missions/welcome.txt.",
+            "cat /missions/welcome.txt",
+        ).with_validation(vec!["welcome"]),
+        MissionDefinition::new(
+            "echo-101",
+            "Voice Check: Echo and Print",
+            false,
+            false,
+            false,
+            3,
+            "Use echo to send text to the screen — your first command that produces output from nothing.",
+            "Before you can pipe data, you need to know how to create it. \
+             Echo is the simplest way to put text into the stream.",
+            "echo followed by text prints that text. Wrap it in quotes if it has spaces.",
+            "echo 'Ghost Rail is down'",
+        ).with_validation(vec!["Ghost"]),
+        MissionDefinition::new(
+            "grep-101",
+            "Signal Filter: Your First Grep",
+            false,
+            false,
+            false,
+            4,
+            "Use grep to find a specific word in a file without reading every line.",
+            "The gateway log has hundreds of entries but you only care about warnings. \
+             Grep is how you ask the system to do the reading for you.",
+            "grep PATTERN FILE shows only lines containing PATTERN. Try grep WARN on the gateway log.",
+            "grep WARN /logs/neon-gateway.log",
+        ).with_validation(vec!["WARN"]),
+        MissionDefinition::new(
+            "pipe-101",
+            "Flow Control: Your First Pipe",
+            false,
+            false,
+            false,
+            5,
+            "Connect two commands with a pipe so the output of one flows into the next.",
+            "A single command is useful. Two commands connected by a pipe are a tool. \
+             This is the foundation of everything that comes after.",
+            "The | symbol sends the output of the left command into the input of the right command.",
+            "cat /logs/neon-gateway.log | grep token",
+        ).with_validation(vec!["token"]),
+        // ── Gateway mission ──
         MissionDefinition::new(
             KEYS_VAULT,
             "KEYS VAULT: Secure Your Access",
@@ -1345,6 +2540,129 @@ fn seed_missions() -> Vec<MissionDefinition> {
             "Use find to discover files first. Once you know the path, read it with cat or less.",
             "find /data -name '*.txt'",
         ),
+        // ── Story arc: surface anomalies (starters, 10 rep) ──
+        MissionDefinition::new(
+            "timestamp-gap",
+            "Timestamp Gap: The Missing Minutes",
+            false,
+            true,
+            false,
+            15,
+            "Sort the gateway log entries and find the 7-minute window where nothing was recorded.",
+            "Every log has a rhythm. This one skips a beat — seven full minutes of silence \
+             right when vault-sat-9 dropped off the grid. Gaps like that do not happen by accident.",
+            "Pipe the log through sort to order entries chronologically. Look for the jump in timestamps.",
+            "grep INFO /logs/neon-gateway.log | sort",
+        ).with_validation(vec!["INFO"]),
+        MissionDefinition::new(
+            "ghost-user",
+            "Ghost User: Who Is WREN?",
+            false,
+            true,
+            false,
+            16,
+            "Search the auth log for a username that should not exist on this system.",
+            "The auth log records every login attempt. Most names you recognize — neo, rift, shadow. \
+             But one name does not match anyone on the roster. A ghost in the system.",
+            "Use grep to search for the user 'wren' in the auth log.",
+            "grep wren /var/log/auth.log",
+        ).with_validation(vec!["wren"]),
+        MissionDefinition::new(
+            "signal-trace",
+            "Signal Trace: Follow GLASS-AXON-13",
+            false,
+            true,
+            false,
+            17,
+            "Count how many log files contain the GLASS-AXON-13 signal. It is in more places than it should be.",
+            "Everyone assumed GLASS-AXON-13 was a stuck beacon repeating on one channel. \
+             But if you search every log, it shows up in places a simple beacon should never reach.",
+            "Use grep -r to search recursively across all files in /logs/. Add -l to list just the filenames.",
+            "grep -rl GLASS-AXON-13 /logs/",
+        ).with_validation(vec!["GLASS-AXON"]),
+        MissionDefinition::new(
+            "deleted-file",
+            "Deleted File: The Empty Directory",
+            false,
+            true,
+            false,
+            18,
+            "Someone cleaned out /data/classified/ but missed a hidden dotfile. Find what they left behind.",
+            "The cleanup crew was thorough — almost. A single dotfile survived the purge because \
+             standard tools skip hidden files unless you know to look for them.",
+            "Use ls -la to show hidden files (those starting with a dot). The -a flag reveals everything.",
+            "ls -la /data/classified/",
+        ).with_validation(vec![".memo"]),
+        MissionDefinition::new(
+            "first-clue",
+            "First Clue: The Unsigned Commit",
+            false,
+            true,
+            false,
+            19,
+            "Read the system changelog and find the unauthorized config change that happened before the blackout.",
+            "Every legitimate change is signed and attributed. One entry in the changelog has no signature, \
+             no author, and landed minutes before everything went dark.",
+            "Use cat to read the changelog. Look for the word 'unauthorized'.",
+            "cat /data/reports/changelog.txt",
+        ).with_validation(vec!["unauthorized"]),
+        // ── NPC introductions (starters, 10 rep) ──
+        MissionDefinition::new(
+            "rivet-log",
+            "Rivet's Field Report",
+            false,
+            true,
+            false,
+            20,
+            "Read the field mechanic's first-person account of the night Ghost Rail went dark.",
+            "Rivet was on shift when the relays died. While everyone else stared at dashboards, \
+             Rivet ran the physical damage assessment. The field report says the relays went dark \
+             in sequence — not all at once. That is not how cascading failures work.",
+            "Read Rivet's report with cat. Look for details about the sequence of events.",
+            "cat /data/reports/rivet-field-report.txt",
+        ).with_validation(vec!["Rivet"]),
+        MissionDefinition::new(
+            "nix-signal",
+            "Nix's Frequency Scan",
+            false,
+            true,
+            false,
+            21,
+            "Count the anomalous signals in Nix's frequency scan — she was the first to notice something was wrong.",
+            "Nix is a signals analyst who noticed GLASS-AXON-13 before anyone else. \
+             Her frequency scan flagged anomalous entries that CorpSim later buried. \
+             Count the flagged entries to see the scale of what she found.",
+            "Grep for ANOMALY flags in Nix's scan log and count them with wc -l.",
+            "grep ANOMALY /data/reports/nix-frequency-scan.log | wc -l",
+        ).with_validation(vec!["ANOMALY"]),
+        MissionDefinition::new(
+            "lumen-price",
+            "Lumen's Price List",
+            false,
+            true,
+            false,
+            22,
+            "Read the Neon Bazaar broker's price list — one item should not be for sale.",
+            "Lumen sells information to anyone who can pay. The price list is public, \
+             posted on the Bazaar boards for anyone to read. Most of it is harmless. \
+             But one line item — Ghost Rail access codes — should never be on a public market.",
+            "Read the price list and find the entry about Ghost Rail.",
+            "cat /data/lore/lumen-price-list.txt | grep -i ghost",
+        ).with_validation(vec!["Ghost Rail"]),
+        MissionDefinition::new(
+            "dusk-alibi",
+            "Dusk's Detention Record",
+            false,
+            true,
+            false,
+            23,
+            "Read the detention record of CorpSim's prime suspect and find the alibi that clears them.",
+            "Dusk was arrested as the obvious suspect — disgraced, insubordinate, already on thin ice. \
+             But the detention record has timestamps. And those timestamps put Dusk in a completely \
+             different sector when vault-sat-9 went dark. Someone wanted a scapegoat.",
+            "Grep for the alibi timestamps in the detention log.",
+            "grep alibi /data/reports/dusk-detention.log",
+        ).with_validation(vec!["alibi"]),
         // Intermediate missions — bridge starters to advanced
         MissionDefinition::new(
             "head-tail",
@@ -1412,6 +2730,143 @@ fn seed_missions() -> Vec<MissionDefinition> {
             "Pipe a list into xargs to run a command once per item. Add -I{} for placement control.",
             "find /data -name '*.csv' | xargs wc -l",
         ),
+        // ── Story arc: the insider thread (intermediate, 15 rep) ──
+        MissionDefinition::new(
+            "access-pattern",
+            "Access Pattern: Internal Breach",
+            false,
+            false,
+            false,
+            55,
+            "Run frequency analysis on vault-sat-9 access logs to find the IP that connected far more than any other.",
+            "Normal admin access hits vault-sat-9 once or twice a shift. One internal IP connected \
+             forty-seven times in a single night. That is not maintenance — that is exfiltration.",
+            "Grep for vault-sat-9, extract the source IP with awk, then count with sort | uniq -c | sort -rn.",
+            "grep vault-sat-9 /var/log/access-detail.log | awk '{print $NF}' | sort | uniq -c | sort -rn",
+        ).with_validation(vec!["10.77"]),
+        MissionDefinition::new(
+            "purged-comms",
+            "Purged Comms: Recovery Operation",
+            false,
+            false,
+            false,
+            56,
+            "Read recovered fragments of internal messages that were supposed to be permanently deleted.",
+            "Someone ran a purge on the internal comms archive the morning after the blackout. \
+             The backup system caught fragments before they were wiped. The timestamps overlap perfectly.",
+            "Use cat to read the recovered fragment. The messages reference a codename.",
+            "cat /data/comms/recovered-fragment.txt",
+        ).with_validation(vec!["WREN"]),
+        MissionDefinition::new(
+            "key-rotation",
+            "Key Rotation: The Trigger Mechanism",
+            false,
+            false,
+            false,
+            57,
+            "Search the crypto event log and discover that GLASS-AXON-13 is not a beacon — it is a key-rotation trigger.",
+            "The signal everyone assumed was a stuck beacon was actually a command. \
+             Every time GLASS-AXON-13 appeared, a credential rotation fired on vault-sat-9. Automated. Deliberate.",
+            "Grep for GLASS-AXON in the crypto log, then use awk to extract the event type field.",
+            "grep GLASS-AXON /logs/crypto-events.log | awk '{print $1, $4, $5}'",
+        ).with_validation(vec!["rotate"]),
+        MissionDefinition::new(
+            "roster-check",
+            "Roster Check: Who Has Access?",
+            false,
+            false,
+            false,
+            58,
+            "Cross-reference the personnel roster to find a badge that is active on a terminated employee.",
+            "CorpSim's personnel file lists every employee and their badge status. \
+             One name appears as terminated, but their badge never got revoked. That is how they got in.",
+            "Use cut to extract the name and badge-status columns, then grep for active entries.",
+            "cut -d, -f1,3 /data/personnel.csv | grep active",
+        ).with_validation(vec!["wren"]),
+        MissionDefinition::new(
+            "timing-attack",
+            "Timing Attack: Correlation Analysis",
+            false,
+            false,
+            false,
+            59,
+            "Paste together two timestamp files and prove that GLASS-AXON-13 signals and vault-sat-9 drops are perfectly synchronized.",
+            "Coincidence dies when the timestamps match to the second. Line up the beacon appearances \
+             with the vault connection drops. The synchronization is not natural.",
+            "Use paste to merge the two time files side by side, then awk to flag matches.",
+            "paste /tmp/axon-times.txt /tmp/vault-drops.txt",
+        ).with_validation(vec!["22:01"]),
+        // ── NPC investigations (intermediate, 15 rep) ──
+        MissionDefinition::new(
+            "kestrel-brief",
+            "Kestrel's Briefing",
+            false,
+            false,
+            false,
+            60,
+            "Read the classified briefing left by Ghost Rail's station chief for operatives who made it this far.",
+            "Kestrel trained Wren. Now Kestrel is hunting Wren. This briefing is personal — \
+             it contains what Kestrel knows about the breach and what the official reports leave out. \
+             Use awk to extract the key intel lines.",
+            "Read the briefing and use awk to pull out lines marked INTEL.",
+            "cat /data/classified/kestrel-briefing.txt | awk '/INTEL/ {print}'",
+        ).with_validation(vec!["INTEL"]),
+        MissionDefinition::new(
+            "ferro-lockdown",
+            "Ferro's Lockdown Order",
+            false,
+            false,
+            false,
+            61,
+            "Read the security lockdown order and find which files Ferro specifically tried to suppress.",
+            "Ferro sealed /data/classified/ the morning after the blackout. The lockdown order \
+             lists specific filenames — and those filenames are exactly the ones that prove CorpSim's \
+             foreknowledge. She was not protecting secrets for safety. She was burying evidence.",
+            "Grep for SUPPRESS in the lockdown order to find the targeted files.",
+            "grep SUPPRESS /data/classified/ferro-lockdown-order.txt",
+        ).with_validation(vec!["SUPPRESS"]),
+        MissionDefinition::new(
+            "patch-delivery",
+            "Patch's Dead Drop",
+            false,
+            false,
+            false,
+            62,
+            "Find the data package that Patch hid somewhere in /data/drops and read Nix's off-channel intel.",
+            "Patch carries what official channels cannot. Nix used Patch to get her buried \
+             signal analysis to someone who could act on it. The package is in /data/drops/ \
+             but you need to find the exact file.",
+            "Use find to locate files in /data/drops/ and then read the one from Patch.",
+            "find /data/drops -name 'patch*' -type f | xargs cat",
+        ).with_validation(vec!["Nix"]),
+        MissionDefinition::new(
+            "sable-intercept",
+            "Sable's Encrypted Channel",
+            false,
+            false,
+            false,
+            63,
+            "Decode a ROT13-encrypted message from Sable to Wren about the extraction timeline.",
+            "The Reach's handler, codenamed Sable, used a simple cipher to communicate with Wren. \
+             The intercepted message lays out the extraction window, the payment terms, \
+             and the cleanup protocol. Decode it with tr.",
+            "Use tr to apply ROT13 decryption, then grep for timeline keywords.",
+            "cat /data/intercepts/sable-to-wren.enc | tr 'A-Za-z' 'N-ZA-Mn-za-m'",
+        ).with_validation(vec!["extraction"]),
+        MissionDefinition::new(
+            "crucible-ping",
+            "Crucible's First Contact",
+            false,
+            false,
+            false,
+            64,
+            "Find patterned messages in the maintenance layer log sent by an entity that signs itself CRU.",
+            "Something is alive inside Ghost Rail's maintenance layer. It sends structured messages \
+             at regular intervals, signed CRU. Nobody knows if it is a rogue AI, a trapped operator, \
+             or something Wren left behind. Find the messages and extract the content.",
+            "Grep for CRU in the maintenance chatter log and use awk to extract the message field.",
+            "grep CRU /logs/maintenance-chatter.log | awk '{$1=$2=$3=\"\"; print}'",
+        ).with_validation(vec!["CRU"]),
         // Advanced post-NetCity missions
         MissionDefinition::new(
             "awk-patrol",
@@ -1634,7 +3089,200 @@ fn seed_missions() -> Vec<MissionDefinition> {
             "ls -la shows permissions. Look for 'w' in the last triplet (other). find -perm can search by mode.",
             "find /data -type f -perm -o=w -ls",
         ).with_validation(vec!["data"]),
-        // New expert-tier missions — multi-tool chain challenges, 30 rep
+        // ── Story arc: the conspiracy (advanced, 20 rep) ──
+        MissionDefinition::new(
+            "wren-profile",
+            "Wren Profile: Build the Dossier",
+            false,
+            false,
+            false,
+            115,
+            "Assemble Wren's activity across multiple log files into a unified profile.",
+            "Wren's footprints are scattered across three different logs. No single file tells the whole story, \
+             but grep them together and the pattern is unmistakable: one person, systematic access, perfect timing.",
+            "Use grep with multiple file arguments to search all three logs at once.",
+            "grep wren /var/log/auth.log /logs/access.log /logs/crypto-events.log",
+        ).with_validation(vec!["wren"]),
+        MissionDefinition::new(
+            "exfil-trace",
+            "Exfil Trace: Data Left the Building",
+            false,
+            false,
+            false,
+            116,
+            "Find evidence of large data transfers to external IPs during the blackout window.",
+            "Ghost Rail's netflow log records every data transfer. During the blackout, \
+             massive payloads moved to external addresses that do not belong to any CorpSim node. \
+             The data left the building.",
+            "Grep for TRANSFER entries marked 'external', then cut out the timestamp and byte count.",
+            "grep TRANSFER /logs/netflow.log | grep external | cut -d' ' -f1,4,5",
+        ).with_validation(vec!["external"]),
+        MissionDefinition::new(
+            "reach-intercept",
+            "Reach Intercept: The Buyer",
+            false,
+            false,
+            false,
+            117,
+            "Read intercepted communications that name The Reach as the buyer of Ghost Rail routing data.",
+            "An allied signal team intercepted encrypted traffic between Wren's relay and an external party. \
+             The decrypted fragments mention a city-state called The Reach — and a price for Ghost Rail's \
+             transit routing tables.",
+            "Grep for 'Reach' in the comms dump, then use sed to replace [REDACTED] markers.",
+            "grep -i reach /data/intercepts/comms-dump.txt | sed 's/\\[REDACTED\\]/[EXPOSED]/g'",
+        ).with_validation(vec!["Reach"]),
+        MissionDefinition::new(
+            "config-diff",
+            "Config Diff: Before and After",
+            false,
+            false,
+            false,
+            118,
+            "Compare vault-sat-9's configuration before and after the blackout to prove the key was swapped.",
+            "CorpSim kept a snapshot of vault-sat-9's config from the last clean audit. \
+             Compare it to the current config and you will see the smoking gun: \
+             the SSH host key fingerprint changed. Someone rotated the credentials.",
+            "Use diff to compare the two config files. Look for the fingerprint line.",
+            "diff /data/configs/vault-before.conf /data/configs/vault-after.conf",
+        ).with_validation(vec!["fingerprint"]),
+        MissionDefinition::new(
+            "dead-drop",
+            "Dead Drop: Wren's Stash",
+            false,
+            false,
+            false,
+            119,
+            "Search the entire filesystem for hidden files that Wren planted as breadcrumbs.",
+            "Wren was not careless — they were deliberate. Hidden dotfiles scattered across the filesystem \
+             form a trail. Each one contains a fragment of the truth. Find them all.",
+            "Use find with -name '.wren*' to locate hidden files starting with .wren across the whole tree.",
+            "find / -name '.wren*' -type f",
+        ).with_validation(vec![".wren"]),
+        MissionDefinition::new(
+            "corpsim-memo",
+            "CorpSim Memo: The Cover Story",
+            false,
+            false,
+            false,
+            120,
+            "Read the classified CorpSim memo that proves they knew about Wren before the blackout.",
+            "The memo was supposed to be destroyed. It shows that CorpSim's executive board \
+             knew about Wren's unauthorized access two weeks before the blackout and chose to monitor \
+             instead of revoke. They wanted to see where the data went. They let it happen.",
+            "Read the hidden memo and grep for the key admission.",
+            "cat /data/classified/.memo | grep -i knew",
+        ).with_validation(vec!["knew"]),
+        MissionDefinition::new(
+            "network-map",
+            "Network Map: Reconstruct the Topology",
+            false,
+            false,
+            false,
+            121,
+            "Build a readable network map showing how Wren connected internal systems to an external relay.",
+            "The netflow summary is a raw list of connections. Format it into a readable topology \
+             and the architecture of the breach becomes clear: internal node to vault-sat-9 to The Reach's relay.",
+            "Use awk with a printf format to align the connection map into readable columns.",
+            "awk -F'\\t' '{printf \"%-20s -> %-20s [%s]\\n\", $1, $2, $3}' /data/netflow-summary.tsv",
+        ).with_validation(vec!["vault-sat-9"]),
+        MissionDefinition::new(
+            "kill-switch",
+            "Kill Switch: The Failsafe",
+            false,
+            false,
+            false,
+            122,
+            "Find Wren's cron job kill switch that would wipe all evidence if triggered.",
+            "Wren built a failsafe: a cron job set to fire at a specific time that would overwrite \
+             every log, config, and memo. If it had triggered, there would be nothing left to find. \
+             Extract the command before someone reactivates it.",
+            "Search the full crontab for entries by wren and extract the command portion with awk.",
+            "grep wren /data/crontab-full.txt | awk '{print $6, $7, $8}'",
+        ).with_validation(vec!["wipe"]),
+        // ── NPC confrontations (advanced, 20 rep) ──
+        MissionDefinition::new(
+            "argon-orders",
+            "Argon's Standing Orders",
+            false,
+            false,
+            false,
+            123,
+            "Find Argon's executive orders across multiple classified files — he authorized the cover-up and the training sim.",
+            "Argon signed three directives: one to suppress the evidence, one to create the training sim, \
+             and one to detain Dusk as a scapegoat. The orders are scattered across classified files. \
+             Grep them all at once.",
+            "Search multiple classified files for Argon's directives.",
+            "grep -h DIRECTIVE /data/classified/argon-exec-orders.txt /data/classified/.memo",
+        ).with_validation(vec!["DIRECTIVE"]),
+        MissionDefinition::new(
+            "kestrel-hunt",
+            "Kestrel's Manhunt",
+            false,
+            false,
+            false,
+            124,
+            "Parse Kestrel's tracking log to find where Wren was last seen before disappearing.",
+            "Kestrel has been running an off-books manhunt since the blackout. The tracking log \
+             records every confirmed sighting, with timestamps and sector coordinates. \
+             Sort by timestamp to find the most recent sighting.",
+            "Use awk and sort to extract and order the sighting entries.",
+            "awk -F'|' '{print $1, $3}' /data/reports/kestrel-tracking.log | sort",
+        ).with_validation(vec!["sector-7"]),
+        MissionDefinition::new(
+            "ferro-bypass",
+            "Bypass Ferro's Firewall",
+            false,
+            false,
+            false,
+            125,
+            "Find the permission gaps that Ferro missed when she locked down classified files.",
+            "Ferro sealed /data/classified/ but she was in a hurry. Some files still have \
+             world-readable or world-writable permissions. Find the gaps she missed.",
+            "Use find with permission flags to locate files Ferro failed to lock down.",
+            "find /data/classified -type f -perm -o=r -ls",
+        ).with_validation(vec!["classified"]),
+        MissionDefinition::new(
+            "nix-decoded",
+            "Nix's Full Analysis",
+            false,
+            false,
+            false,
+            126,
+            "Parse Nix's complete signal analysis CSV to prove GLASS-AXON-13 was artificially generated.",
+            "Nix ran a full frequency analysis before CorpSim buried her report. The CSV shows \
+             that GLASS-AXON-13's signal pattern has zero variance in timing — a statistical impossibility \
+             for natural beacon drift. Only a programmed trigger produces that pattern.",
+            "Use awk to extract the variance column and filter for zero-variance entries.",
+            "awk -F, 'NR>1 && $4 == 0 {print $1, $2, \"ARTIFICIAL\"}' /data/reports/nix-full-analysis.csv",
+        ).with_validation(vec!["ARTIFICIAL"]),
+        MissionDefinition::new(
+            "lumen-deal",
+            "Lumen's Double Deal",
+            false,
+            false,
+            false,
+            127,
+            "Prove that Lumen sold the same data to both CorpSim and The Reach by diffing the transaction logs.",
+            "Lumen plays every side. The broker kept separate transaction logs for each buyer — \
+             but the item descriptions match. Diff the two logs to prove the double deal.",
+            "Sort both transaction logs and diff them to find matching entries.",
+            "diff /data/lore/lumen-transactions.log /data/lore/lumen-transactions-reach.log",
+        ).with_validation(vec!["routing"]),
+        MissionDefinition::new(
+            "crucible-map",
+            "Crucible's Hidden Network",
+            false,
+            false,
+            false,
+            128,
+            "Find and assemble Crucible's network map fragments scattered across the maintenance layer logs.",
+            "Crucible has been mapping CorpSim's internal network from inside Ghost Rail. \
+             The map fragments are hidden in the maintenance chatter log, tagged with coordinates. \
+             Find them and assemble the topology.",
+            "Grep for MAP in the maintenance log and the netmap fragments file.",
+            "grep MAP /logs/crucible-netmap-fragments.txt | sort",
+        ).with_validation(vec!["MAP"]),
+        // ── Expert-tier missions — chain multiple concepts, reward 30 rep ──
         MissionDefinition::new(
             "incident-report",
             "Incident Report: Reconstruct the Timeline",
@@ -1675,11 +3323,101 @@ fn seed_missions() -> Vec<MissionDefinition> {
             "Read each file, extract the path hint, follow it. The answer is a 6-character code in the last file.",
             "cat /missions/escape-start.txt | grep 'NEXT:' | awk '{print $2}' | xargs cat",
         ).with_validation(vec!["ESCAPE"]),
+        // ── Story arc: the endgame (expert, 30 rep) ──
+        MissionDefinition::new(
+            "decrypt-wren",
+            "Decrypt Wren: Break the Cipher",
+            false,
+            false,
+            false,
+            206,
+            "Decode Wren's ROT13-encrypted final message to read the confession.",
+            "Wren left one last file before disappearing. It is encrypted with a simple rotation cipher — \
+             not because it was meant to stay secret forever, but because it was meant to be found \
+             by someone who earned the right to read it. That someone is you.",
+            "ROT13 swaps each letter 13 positions. tr 'A-Za-z' 'N-ZA-Mn-za-m' decodes it.",
+            "cat /data/classified/wren-final.enc | tr 'A-Za-z' 'N-ZA-Mn-za-m'",
+        ).with_validation(vec!["confession"]),
+        MissionDefinition::new(
+            "prove-corpsim",
+            "Prove CorpSim: Chain of Evidence",
+            false,
+            false,
+            false,
+            207,
+            "Build a chain of evidence across three files linking CorpSim's foreknowledge to Wren's access to The Reach.",
+            "The memo proves CorpSim knew. The comms prove The Reach paid. The crypto log proves how. \
+             Grep the EVIDENCE markers from all three and you have a chain no auditor can dismiss.",
+            "Use grep -h with multiple files to extract EVIDENCE-tagged lines, then sort and dedup.",
+            "grep -h EVIDENCE /data/classified/.memo /data/intercepts/comms-dump.txt /logs/crypto-events.log | sort | uniq",
+        ).with_validation(vec!["EVIDENCE"]),
+        MissionDefinition::new(
+            "final-report",
+            "Final Report: The Whistleblower File",
+            false,
+            false,
+            false,
+            208,
+            "Compile the definitive incident report from all evidence sources into a single file.",
+            "This is the last mission. Everything you have found — the insider, the trigger, the buyer, \
+             the cover-up — goes into one file. When this report reaches the right hands, \
+             Ghost Rail's blackout stops being a mystery and becomes a reckoning.",
+            "Use echo, grep, and cat with redirection to assemble the report into /tmp/final-report.txt.",
+            "echo '=== INCIDENT REPORT ===' > /tmp/final-report.txt && grep wren /var/log/auth.log >> /tmp/final-report.txt && echo '---' >> /tmp/final-report.txt && grep TRANSFER /logs/netflow.log | head -3 >> /tmp/final-report.txt",
+        ).with_validation(vec!["INCIDENT"]),
+        // ── NPC endgame (expert, 30 rep) ──
+        MissionDefinition::new(
+            "kestrel-verdict",
+            "Kestrel's Verdict",
+            false,
+            false,
+            false,
+            209,
+            "Compile the prosecution file that Kestrel needs: perpetrator, motive, cover-up, and obstruction.",
+            "Kestrel has been waiting for this. The case file needs four elements: \
+             Wren's confession, Argon's executive orders, Sable's payment chain, and Ferro's \
+             suppression list. Grep the key evidence from each source into one prosecution file.",
+            "Build the prosecution file by grepping EVIDENCE from multiple sources into /tmp/prosecution.txt.",
+            "grep -h EVIDENCE /data/classified/.memo /data/intercepts/comms-dump.txt /logs/crypto-events.log /data/classified/argon-exec-orders.txt > /tmp/prosecution.txt && cat /tmp/prosecution.txt",
+        ).with_validation(vec!["EVIDENCE"]),
+        MissionDefinition::new(
+            "crucible-offer",
+            "Crucible's Offer",
+            false,
+            false,
+            false,
+            210,
+            "Compile evidence into the format Crucible requires for permanent off-site archival.",
+            "Crucible offered to archive all evidence outside CorpSim's administrative reach. \
+             But the archive format is specific: each entry must be tagged, timestamped, and \
+             written to /tmp/archive.txt. If Argon invokes Protocol 7, this is the backup.",
+            "Build the archive by echoing tagged evidence lines into /tmp/archive.txt.",
+            "echo '[ARCHIVE] confession' > /tmp/archive.txt && echo '[ARCHIVE] cover-up' >> /tmp/archive.txt && echo '[ARCHIVE] payment' >> /tmp/archive.txt && cat /tmp/archive.txt",
+        ).with_validation(vec!["ARCHIVE"]),
+        MissionDefinition::new(
+            "wren-reply",
+            "Wren's Reply",
+            false,
+            false,
+            false,
+            211,
+            "A new encrypted message from Wren appeared after the final report. Decode it.",
+            "You thought it was over. Then a new file appeared in /data/classified/ — \
+             encrypted, signed W. Wren is not done talking. The decoded message reveals \
+             that Ghost Rail's blackout was a distraction. The real extraction happened \
+             somewhere else entirely. The sequel begins.",
+            "Decode the ROT13 message and grep for the key revelation.",
+            "cat /data/classified/wren-reply.enc | tr 'A-Za-z' 'N-ZA-Mn-za-m'",
+        ).with_validation(vec!["distraction"]),
     ]
 }
 
 pub fn is_advanced_mission(code: &str) -> bool {
     ADVANCED_CODES.contains(&code)
+}
+
+pub fn is_tutorial_mission(code: &str) -> bool {
+    TUTORIAL_CODES.contains(&code)
 }
 
 fn seed_events() -> Vec<WorldEvent> {
@@ -1735,8 +3473,8 @@ fn fingerprint(pubkey_line: &str) -> String {
 async fn persist_player_login(pool: &PgPool, player: &PlayerProfile) -> Result<()> {
     sqlx::query(
         r#"
-        INSERT INTO players (id, username, display_name, tier, deaths, banned, wallet, reputation)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO players (id, username, display_name, tier, deaths, banned, wallet, reputation, tutorial_step)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (id)
         DO UPDATE SET
             username = EXCLUDED.username,
@@ -1746,6 +3484,7 @@ async fn persist_player_login(pool: &PgPool, player: &PlayerProfile) -> Result<(
             banned = EXCLUDED.banned,
             wallet = EXCLUDED.wallet,
             reputation = EXCLUDED.reputation,
+            tutorial_step = EXCLUDED.tutorial_step,
             updated_at = now()
         "#,
     )
@@ -1757,6 +3496,7 @@ async fn persist_player_login(pool: &PgPool, player: &PlayerProfile) -> Result<(
     .bind(player.banned)
     .bind(player.wallet)
     .bind(player.reputation)
+    .bind(player.tutorial_step as i16)
     .execute(pool)
     .await?;
 

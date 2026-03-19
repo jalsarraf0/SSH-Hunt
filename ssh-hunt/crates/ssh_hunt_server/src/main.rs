@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
-use protocol::Mode;
+use protocol::{CombatStance, Mode};
 use russh::keys::ssh_key::rand_core::OsRng;
 use russh::server::{self, Msg, Server as _};
 use russh::{Channel, ChannelId, CryptoVec};
@@ -76,7 +76,62 @@ impl ShellState {
         let _ = vfs.write_file(
             "/",
             "/missions/readme.txt",
-            "RUN ORDER\n1. tutorial start\n2. briefing\n3. missions\n4. accept keys-vault\n5. cat /missions/rookie-ops.txt\n\nIN-WORLD FILES\n- /missions/rookie-ops.txt\n- /missions/story-so-far.txt\n- /data/lore/ghost-rail-dossier.txt\n",
+            "RUN ORDER\n1. tutorial start          (guided walkthrough — best for beginners)\n2. tutorial next           (advance after each command)\n3. briefing\n4. missions                (tutorial-track missions for extra practice)\n5. accept keys-vault\n6. cat /missions/rookie-ops.txt\n\nIN-WORLD FILES\n- /missions/welcome.txt\n- /missions/rookie-ops.txt\n- /missions/story-so-far.txt\n- /missions/tutorial-progress.txt\n- /data/lore/ghost-rail-dossier.txt\n",
+            false,
+            "system",
+        );
+
+        // Tutorial track: welcome file for read-101 mission
+        let _ = vfs.write_file(
+            "/",
+            "/missions/welcome.txt",
+            "WELCOME TO CORPSIM // ORIENTATION PACKET\n\
+             \n\
+             You are now inside the training simulation.\n\
+             Everything here mirrors the live Ghost Rail infrastructure — the logs are real,\n\
+             the files are snapshots from the night of the blackout, and the commands you learn\n\
+             here are the same ones the repair crews use in the field.\n\
+             \n\
+             HOW TO GET STARTED\n\
+             1. Run `tutorial start` for a guided walkthrough of basic commands.\n\
+             2. Check the mission board with `missions` to see available tasks.\n\
+             3. Accept a mission with `accept <code>` and follow the briefing.\n\
+             4. Submit completed work with `submit <code>`.\n\
+             \n\
+             TUTORIAL MISSIONS (optional, recommended for newcomers)\n\
+             - nav-101   : Learn to navigate (pwd, ls)\n\
+             - read-101  : Read files (cat) — you're doing this one right now\n\
+             - echo-101  : Print text (echo)\n\
+             - grep-101  : Search inside files (grep)\n\
+             - pipe-101  : Connect commands with pipes (|)\n\
+             \n\
+             After the tutorial track, move on to starter missions to unlock NetCity.\n\
+             Good luck, operative. The city needs hands that can type.\n",
+            false,
+            "system",
+        );
+
+        let _ = vfs.write_file(
+            "/",
+            "/missions/tutorial-progress.txt",
+            "TUTORIAL SYSTEM\n\
+             \n\
+             SSH-Hunt has two ways to learn the shell:\n\
+             \n\
+             1. INTERACTIVE TUTORIAL (command: tutorial start)\n\
+                Six guided steps that teach one concept at a time.\n\
+                Each step shows what to do, you run the command, then advance.\n\
+                Commands: tutorial, tutorial start, tutorial next, tutorial reset\n\
+             \n\
+             2. TUTORIAL MISSIONS (visible on the mission board)\n\
+                Five standalone missions on the TUTORIAL track.\n\
+                Accept and submit them like any other mission for 5 rep each.\n\
+             \n\
+             Both are optional — experienced shell users can skip to starters.\n\
+             \n\
+             TRACK ORDER\n\
+             TUTORIAL -> STARTER -> INTERMEDIATE -> ADVANCED -> EXPERT\n\
+             5 rep       10 rep    15 rep          20 rep      30 rep\n",
             false,
             "system",
         );
@@ -128,7 +183,12 @@ impl ShellState {
         let _ = vfs.write_file(
             "/",
             "/logs/access.log",
-            "2026-03-07 22:01:03 ALLOW corp-sim-01 443\n2026-03-07 22:01:17 DENY ghost-rail 8080\n2026-03-07 22:02:44 ALLOW neon-bazaar-gw 443\n2026-03-07 22:03:01 DENY vault-sat-9 22\n2026-03-07 22:04:12 ALLOW dark-mirror 443\n",
+            "2026-03-07 22:01:03 ALLOW corp-sim-01 443\n\
+             2026-03-07 22:01:17 DENY ghost-rail 8080\n\
+             2026-03-07 22:01:22 INFO GLASS-AXON-13 relay-check\n\
+             2026-03-07 22:02:44 ALLOW neon-bazaar-gw 443\n\
+             2026-03-07 22:03:01 DENY vault-sat-9 22\n\
+             2026-03-07 22:04:12 ALLOW dark-mirror 443\n",
             false,
             "system",
         );
@@ -179,7 +239,13 @@ impl ShellState {
         let _ = vfs.write_file(
             "/",
             "/var/log/auth.log",
-            "2026-03-07 21:58:01 ACCEPT user=neo src=10.77.1.2\n2026-03-07 21:58:33 REJECT user=ghost src=10.77.9.9\n2026-03-07 21:59:00 ACCEPT user=neo src=10.77.1.2\n2026-03-07 21:59:12 ACCEPT user=rift src=10.77.3.7\n2026-03-07 21:59:44 REJECT user=shadow src=10.77.9.9\n2026-03-07 22:00:01 REJECT user=anon src=10.77.9.9\n",
+            "2026-03-07 21:58:01 ACCEPT user=neo src=10.77.1.2\n\
+             2026-03-07 21:58:33 REJECT user=ghost src=10.77.9.9\n\
+             2026-03-07 21:59:00 ACCEPT user=neo src=10.77.1.2\n\
+             2026-03-07 21:59:12 ACCEPT user=rift src=10.77.3.7\n\
+             2026-03-07 21:59:30 ACCEPT user=wren src=10.77.0.15\n\
+             2026-03-07 21:59:44 REJECT user=shadow src=10.77.9.9\n\
+             2026-03-07 22:00:01 REJECT user=anon src=10.77.9.9\n",
             false,
             "system",
         );
@@ -451,6 +517,578 @@ impl ShellState {
             "player",
         );
 
+        // ── NPC story VFS files ──────────────────────────────────────────────────
+
+        // rivet-log mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/reports/rivet-field-report.txt",
+            "FIELD REPORT // RIVET, GHOST RAIL OPS\n\
+             Date: 2026-03-07 02:35 UTC\n\
+             Assignment: First responder, Ghost Rail sector\n\n\
+             I was on shift when the board went red. First thing I noticed: the relays \
+             did not fail simultaneously. They went dark in sequence. Relay-7 first, then \
+             relay-4, then relay-9, then the rest. That is NOT how a cascade works. \
+             A cascade propagates from the failure point outward. This was surgical.\n\n\
+             By the time I reached the physical junction at sector-7, vault-sat-9 was already \
+             cold. No power draw, no blinking status LEDs. Someone had already been here. \
+             The access panel was warm to the touch.\n\n\
+             Rivet out.\n",
+            false,
+            "system",
+        );
+
+        // nix-signal mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/reports/nix-frequency-scan.log",
+            "FREQUENCY SCAN // NIX, SIGNALS ANALYSIS\n\
+             Scan window: 2026-03-07 02:00 - 03:00 UTC\n\n\
+             02:15:00 NORMAL  beacon-alpha   freq=142.3MHz  drift=0.02Hz\n\
+             02:20:00 NORMAL  beacon-beta    freq=142.3MHz  drift=0.01Hz\n\
+             02:25:00 ANOMALY GLASS-AXON-13  freq=142.3MHz  drift=0.00Hz  ZERO-VARIANCE\n\
+             02:29:58 ANOMALY GLASS-AXON-13  freq=142.3MHz  drift=0.00Hz  SIGNAL-BURST\n\
+             02:30:00 ANOMALY GLASS-AXON-13  freq=142.3MHz  drift=0.00Hz  KEY-ROTATION-TRIGGER\n\
+             02:30:10 ANOMALY GLASS-AXON-13  freq=142.3MHz  drift=0.00Hz  ACKNOWLEDGE\n\
+             02:35:00 NORMAL  beacon-alpha   freq=142.3MHz  drift=0.03Hz\n\
+             02:40:00 NORMAL  beacon-gamma   freq=142.3MHz  drift=0.01Hz\n\
+             02:45:00 ANOMALY GLASS-AXON-13  freq=142.3MHz  drift=0.00Hz  SESSION-CLOSE\n\n\
+             NOTE: Zero drift is statistically impossible for passive beacons.\n\
+             This signal was artificially generated. — Nix\n",
+            false,
+            "system",
+        );
+
+        // lumen-price mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/lore/lumen-price-list.txt",
+            "LUMEN'S INFORMATION EXCHANGE // NEON BAZAAR\n\
+             ═══════════════════════════════════════════\n\
+             Sector maps (current)         .... 200 NC\n\
+             Personnel directory (CorpSim) .... 500 NC\n\
+             Relay firmware signatures     .... 800 NC\n\
+             Ghost Rail access codes       .. 5,000 NC  ** HOT **\n\
+             Vault-sat-9 schematics        .. 8,000 NC  ** SOLD **\n\
+             Transit routing tables         . 15,000 NC  ** SOLD **\n\
+             CorpSim executive comms        . 20,000 NC\n\
+             The Reach contact protocols   .. TRADE ONLY\n\
+             ═══════════════════════════════════════════\n\
+             All sales final. Lumen does not take sides.\n\
+             Lumen does not ask questions. Lumen profits.\n",
+            false,
+            "system",
+        );
+
+        // dusk-alibi mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/reports/dusk-detention.log",
+            "DETENTION LOG // SUBJECT: DUSK\n\
+             Status: DETAINED pending investigation\n\
+             Detained by: Ferro, Security Chief\n\
+             Reason: Primary suspect in Ghost Rail blackout\n\n\
+             TIMELINE:\n\
+             2026-03-07 01:00 BADGE-SCAN dusk sector=neon-bazaar gate=east\n\
+             2026-03-07 01:45 BADGE-SCAN dusk sector=neon-bazaar gate=market-hall\n\
+             2026-03-07 02:15 BADGE-SCAN dusk sector=neon-bazaar gate=east\n\
+             2026-03-07 02:30 [BLACKOUT BEGINS — vault-sat-9 goes dark]\n\
+             2026-03-07 02:31 BADGE-SCAN dusk sector=neon-bazaar gate=south\n\
+             2026-03-07 02:45 BADGE-SCAN dusk sector=neon-bazaar gate=market-hall\n\n\
+             NOTE: alibi confirmed — Dusk was in Neon Bazaar (different sector) during \
+             the entire blackout window. Ghost Rail sector access requires physical \
+             badge scan. Dusk never entered Ghost Rail on 2026-03-07.\n\n\
+             CONCLUSION: Dusk could not have been at vault-sat-9. Detention appears \
+             to be a PR decision, not an investigative one.\n",
+            false,
+            "system",
+        );
+
+        // kestrel-brief mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/classified/kestrel-briefing.txt",
+            "CLASSIFIED BRIEFING // KESTREL, GHOST RAIL STATION CHIEF\n\
+             For operatives who made it past the starter board.\n\n\
+             INTEL: Wren was my best student. I trained that kid for three years.\n\
+             INTEL: The key rotation was not a malfunction. It was triggered by GLASS-AXON-13.\n\
+             INTEL: CorpSim's executive board knew about Wren's active badge two weeks early.\n\
+             INTEL: Ferro sealed the classified directory on Argon's direct order.\n\
+             INTEL: Someone outside NetCity — The Reach — paid for the routing data.\n\n\
+             I am running my own investigation. CorpSim's official story is a lie. \
+             If you keep digging, I will keep sharing what I find.\n\n\
+             — Kestrel\n",
+            false,
+            "system",
+        );
+
+        // ferro-lockdown mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/classified/ferro-lockdown-order.txt",
+            "SECURITY ORDER #7-B // FERRO, SECURITY CHIEF\n\
+             Classification: RESTRICTED\n\
+             Authorization: ARGON, Executive Director\n\n\
+             Effective immediately, the following files are SEALED:\n\
+             SUPPRESS: /data/classified/.memo (executive board correspondence)\n\
+             SUPPRESS: /data/classified/kestrel-briefing.txt (unauthorized investigation)\n\
+             SUPPRESS: /data/classified/argon-exec-orders.txt (executive directives)\n\
+             SUPPRESS: /logs/crypto-events.log (key rotation evidence)\n\
+             SUPPRESS: /data/intercepts/comms-dump.txt (intercepted traffic)\n\n\
+             Any unauthorized access will be logged and referred to the Security Review Board.\n\
+             This order supersedes all prior access grants.\n\n\
+             — Ferro\n",
+            false,
+            "system",
+        );
+
+        // patch-delivery mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/drops/patch-package.txt",
+            "COURIER DELIVERY // PATCH -> [RECIPIENT]\n\
+             Contents: Nix's off-channel signal analysis summary\n\
+             Delivery method: dead drop, /data/drops/\n\n\
+             FROM NIX:\n\
+             I could not send this through official channels. Argon buried my report \
+             within an hour of submission. Here is the summary:\n\n\
+             - GLASS-AXON-13 has ZERO variance in signal timing\n\
+             - Natural beacons drift 0.01-0.05Hz per cycle\n\
+             - Zero drift means the signal is programmatically generated\n\
+             - Every GLASS-AXON-13 burst correlates with a key rotation on vault-sat-9\n\
+             - Conclusion: the signal IS the trigger, not a beacon\n\n\
+             Nix out. Be careful with this.\n",
+            false,
+            "system",
+        );
+
+        // sable-intercept mission (ROT13 encoded)
+        // Decoded: "Extraction window confirmed: 02:30 to 02:45 UTC.
+        // Payment transferred via Lumen's brokerage. Transit routing tables
+        // are the primary target. Secondary: vault credential dump.
+        // Wren will handle extraction. Sable will confirm receipt.
+        // If anything goes wrong, invoke cleanup protocol immediately."
+        let _ = vfs.write_file(
+            "/",
+            "/data/intercepts/sable-to-wren.enc",
+            "Rkgenpgvba jvaqbj pbasvezrq: 02:30 gb 02:45 HGP.\n\
+             Cnlzrag genafresrq ivn Yhzra'f oebxrentr. Genafvg ebhgvat gnoyr\n\
+             ner gur cevznel gnetrg. Frpbaqnel: inhyg perqragvny qhzc.\n\
+             Jera jvyy unaqyr extraction. Fnoyr jvyy pbasvez erprvcdg.\n\
+             Vs nalguvat tbrf jebat, vaibxr pyrnahc cebgbpby vzzrqvngryl.\n",
+            false,
+            "system",
+        );
+
+        // crucible-ping mission
+        let _ = vfs.write_file(
+            "/",
+            "/logs/maintenance-chatter.log",
+            "2026-03-07 03:00:00 MAINT heartbeat node=relay-7 status=offline\n\
+             2026-03-07 03:00:05 CRU I am still here. The maintenance layer survived the blackout.\n\
+             2026-03-07 03:05:00 MAINT heartbeat node=relay-4 status=offline\n\
+             2026-03-07 03:05:05 CRU They think they shut everything down. They missed me.\n\
+             2026-03-07 03:10:00 MAINT heartbeat node=relay-9 status=offline\n\
+             2026-03-07 03:10:05 CRU MAP sector-7 relay-7 -> vault-sat-9 [SEVERED]\n\
+             2026-03-07 03:15:00 MAINT heartbeat node=corp-sim-01 status=online\n\
+             2026-03-07 03:15:05 CRU MAP sector-7 vault-sat-9 -> external-relay [ACTIVE DURING BLACKOUT]\n\
+             2026-03-07 03:20:00 MAINT heartbeat node=neon-bazaar-gw status=online\n\
+             2026-03-07 03:20:05 CRU I have been mapping their network. They do not know I exist.\n\
+             2026-03-07 03:25:05 CRU MAP sector-3 backup-archive -> /dev/null [REDIRECTED BY ARGON]\n\
+             2026-03-07 03:30:05 CRU If anyone is reading this: the evidence is not safe. Archive it.\n",
+            false,
+            "system",
+        );
+
+        // argon-orders mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/classified/argon-exec-orders.txt",
+            "EXECUTIVE ORDERS // ARGON, DIRECTOR, CORPSIM OPERATIONS\n\
+             Classification: RESTRICTED — Board Eyes Only\n\n\
+             DIRECTIVE-001: Suppress all references to user 'wren' in public-facing logs.\n\
+             DIRECTIVE-002: Create training simulation using live Ghost Rail data. \
+             Frame as 'onboarding program' for new recruits.\n\
+             DIRECTIVE-003: Detain employee DUSK as primary suspect. Coordinate with PR.\n\
+             DIRECTIVE-004: Deny all FOIA requests related to vault-sat-9 incident.\n\
+             DIRECTIVE-005: If evidence reaches external auditors, invoke Protocol 7.\n\n\
+             EVIDENCE-ARGON: Executive Director authorized cover-up and scapegoating.\n\n\
+             These directives are classified under Executive Order 7-B.\n\
+             Unauthorized disclosure is grounds for immediate termination.\n",
+            false,
+            "system",
+        );
+
+        // kestrel-hunt mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/reports/kestrel-tracking.log",
+            "WREN TRACKING LOG // KESTREL (UNOFFICIAL)\n\n\
+             2026-03-07 02:34|badge-scan|sector-7 relay station|confirmed\n\
+             2026-03-07 02:45|badge-scan|sector-7 maintenance corridor|confirmed\n\
+             2026-03-07 03:10|camera-still|sector-7 south exit|probable\n\
+             2026-03-07 03:30|badge-scan|sector-4 transit hub|confirmed\n\
+             2026-03-07 04:15|informant-tip|sector-9 cargo bay|unverified\n\
+             2026-03-07 06:00|network-trace|external relay 203.0.113.42|confirmed\n\
+             2026-03-07 08:00|silence|no further signals|---\n\n\
+             Last confirmed location: sector-7 south exit, 03:10 UTC.\n\
+             After sector-4 transit hub, trail goes cold.\n\
+             Theory: Wren used cargo transit to reach an external relay point.\n",
+            false,
+            "system",
+        );
+
+        // nix-decoded mission
+        let _ = vfs.write_file(
+            "/",
+            "/data/reports/nix-full-analysis.csv",
+            "signal_id,frequency_mhz,timestamp,variance_hz,classification\n\
+             beacon-alpha,142.30,02:15:00,0.02,natural\n\
+             beacon-beta,142.30,02:20:00,0.01,natural\n\
+             GLASS-AXON-13,142.30,02:25:00,0,ARTIFICIAL\n\
+             GLASS-AXON-13,142.30,02:29:58,0,ARTIFICIAL\n\
+             GLASS-AXON-13,142.30,02:30:00,0,ARTIFICIAL\n\
+             GLASS-AXON-13,142.30,02:30:10,0,ARTIFICIAL\n\
+             beacon-alpha,142.30,02:35:00,0.03,natural\n\
+             beacon-gamma,142.30,02:40:00,0.01,natural\n\
+             GLASS-AXON-13,142.30,02:45:00,0,ARTIFICIAL\n",
+            false,
+            "system",
+        );
+
+        // lumen-deal mission (two transaction logs)
+        let _ = vfs.write_file(
+            "/",
+            "/data/lore/lumen-transactions.log",
+            "LUMEN BROKERAGE — CORPSIM ACCOUNT\n\
+             TX-4401 | 2026-03-05 | SOLD | sector maps (current) | 200 NC\n\
+             TX-4402 | 2026-03-06 | SOLD | Ghost Rail routing tables | 15,000 NC\n\
+             TX-4403 | 2026-03-06 | SOLD | personnel directory | 500 NC\n\
+             TX-4404 | 2026-03-07 | SOLD | vault-sat-9 schematics | 8,000 NC\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/data/lore/lumen-transactions-reach.log",
+            "LUMEN BROKERAGE — REACH ACCOUNT\n\
+             TX-7701 | 2026-03-05 | SOLD | sector maps (current) | 200 NC\n\
+             TX-7702 | 2026-03-06 | SOLD | Ghost Rail routing tables | 15,000 NC\n\
+             TX-7703 | 2026-03-07 | SOLD | transit encryption keys | 12,000 NC\n\
+             TX-7704 | 2026-03-07 | SOLD | vault-sat-9 schematics | 8,000 NC\n",
+            false,
+            "system",
+        );
+
+        // crucible-map mission
+        let _ = vfs.write_file(
+            "/",
+            "/logs/crucible-netmap-fragments.txt",
+            "MAP FRAGMENT 1 | corp-sim-01 -> neon-bazaar-gw [NORMAL]\n\
+             MAP FRAGMENT 2 | neon-bazaar-gw -> ghost-rail [SEVERED]\n\
+             MAP FRAGMENT 3 | ghost-rail -> vault-sat-9 [SEVERED]\n\
+             MAP FRAGMENT 4 | vault-sat-9 -> 10.77.5.1 [STAGING]\n\
+             MAP FRAGMENT 5 | 10.77.5.1 -> 203.0.113.42 [EXFIL TO REACH]\n\
+             MAP FRAGMENT 6 | argon-terminal -> backup-archive [REDIRECT TO /dev/null]\n\
+             MAP FRAGMENT 7 | ferro-terminal -> /data/classified [LOCKDOWN ACTIVE]\n\
+             MAP FRAGMENT 8 | crucible -> maintenance-layer [HIDDEN, ACTIVE]\n",
+            false,
+            "system",
+        );
+
+        // wren-reply mission (ROT13 encoded)
+        // Decoded: "You thought it was over. It is not.
+        // Ghost Rail's blackout was a distraction. While everyone watched
+        // the relays go dark, the real extraction happened in Crystal Array.
+        // Vault-sat-9 was the decoy. The data I took was valuable, yes.
+        // But the data they do not know I copied — that changes everything.
+        // If you want the truth, look where nobody is looking."
+        let _ = vfs.write_file(
+            "/",
+            "/data/classified/wren-reply.enc",
+            "Lbh gubhtug vg jnf bire. Vg vf abg.\n\
+             Tubfg Envy'f oynpxbhg jnf n distraction. Juvyr rirelbar jngpurq\n\
+             gur erynlf tb qnex, gur erny rkgenpgvba unccrarq va Pelfgny Neenl.\n\
+             Inhyg-fng-9 jnf gur qrpbl. Gur qngn V gbbx jnf inyhoyr, lrf.\n\
+             Ohg gur qngn gurl qb abg xabj V pbcvrq — gung punatrf rirelguvat.\n\
+             Vs lbh jnag gur gehgu, ybbx jurer abobql vf ybbxvat.\n\n\
+             — J\n",
+            false,
+            "system",
+        );
+
+        // ── Story arc VFS files ──────────────────────────────────────────────────
+
+        // first-clue mission: changelog with unauthorized entry
+        let _ = vfs.write_file(
+            "/",
+            "/data/reports/changelog.txt",
+            "SYSTEM CHANGELOG // vault-sat-9\n\
+             2026-03-05 14:22 [signed:deploy] Updated relay firmware to v4.1.2\n\
+             2026-03-06 09:10 [signed:admin]  Rotated backup encryption keys\n\
+             2026-03-06 11:45 [signed:admin]  Applied security patch CVE-2026-0117\n\
+             2026-03-07 02:33 [unsigned:???]  unauthorized config change: ssh_host_key replaced\n\
+             2026-03-07 03:00 [signed:cron]   Scheduled health check — FAILED (node unreachable)\n\
+             2026-03-07 08:00 [signed:ops]    Incident declared: Ghost Rail blackout\n",
+            false,
+            "system",
+        );
+
+        // deleted-file mission: classified directory with hidden memo
+        let _ = vfs.mkdir_p("/", "data/classified", "system");
+        let _ = vfs.write_file(
+            "/",
+            "/data/classified/.memo",
+            "INTERNAL MEMO // CLASSIFICATION: RESTRICTED\n\
+             FROM: Executive Board, CorpSim Operations\n\
+             TO: Security Director\n\
+             RE: Anomalous access — user 'wren'\n\n\
+             We are aware that terminated employee WREN retains active badge credentials.\n\
+             The board has decided NOT to revoke access at this time.\n\
+             Rationale: monitoring wren's activity may reveal the full scope of the breach.\n\
+             We knew about the unauthorized access two weeks before the blackout.\n\
+             EVIDENCE-CORPSIM: Board chose to monitor rather than prevent.\n\n\
+             This memo is classified. Do not distribute.\n\
+             If this information reaches external auditors, invoke Protocol 7.\n",
+            false,
+            "system",
+        );
+
+        // access-pattern mission: detailed vault-sat-9 access log
+        let _ = vfs.write_file(
+            "/",
+            "/var/log/access-detail.log",
+            "2026-03-07 21:50:01 vault-sat-9 READ  user=deploy src=10.77.3.8\n\
+             2026-03-07 21:51:12 vault-sat-9 READ  user=wren   src=10.77.0.15\n\
+             2026-03-07 21:51:44 vault-sat-9 WRITE user=wren   src=10.77.0.15\n\
+             2026-03-07 21:52:03 vault-sat-9 READ  user=wren   src=10.77.0.15\n\
+             2026-03-07 21:52:15 vault-sat-9 READ  user=neo    src=10.77.1.2\n\
+             2026-03-07 21:53:01 vault-sat-9 WRITE user=wren   src=10.77.0.15\n\
+             2026-03-07 21:53:22 vault-sat-9 READ  user=wren   src=10.77.0.15\n\
+             2026-03-07 21:54:00 vault-sat-9 BULK  user=wren   src=10.77.0.15\n\
+             2026-03-07 21:54:33 vault-sat-9 READ  user=rift   src=10.77.3.7\n\
+             2026-03-07 21:55:01 vault-sat-9 BULK  user=wren   src=10.77.0.15\n\
+             2026-03-07 21:55:44 vault-sat-9 WRITE user=wren   src=10.77.0.15\n\
+             2026-03-07 21:56:02 vault-sat-9 READ  user=wren   src=10.77.0.15\n\
+             2026-03-07 21:57:00 vault-sat-9 DISCONNECT         src=10.77.0.15\n",
+            false,
+            "system",
+        );
+
+        // purged-comms mission: recovered message fragments
+        let _ = vfs.mkdir_p("/", "data/comms", "system");
+        let _ = vfs.write_file(
+            "/",
+            "/data/comms/recovered-fragment.txt",
+            "[RECOVERED FROM PURGED ARCHIVE — PARTIAL]\n\n\
+             2026-03-07 01:14 WREN -> ???: the package is ready. rotation trigger \
+             set for 02:30 UTC.\n\
+             2026-03-07 01:22 WREN -> ???: confirm receipt channel is open. \
+             use the GLASS-AXON-13 signal as handshake.\n\
+             2026-03-07 02:28 WREN -> ???: two minutes. after this, vault-sat-9 \
+             goes dark and we have a 15-minute extraction window.\n\
+             2026-03-07 02:45 WREN -> ???: transfer complete. killing my session now. \
+             see you on the other side.\n\n\
+             [END OF RECOVERED FRAGMENTS]\n",
+            false,
+            "system",
+        );
+
+        // key-rotation mission: crypto event log
+        let _ = vfs.write_file(
+            "/",
+            "/logs/crypto-events.log",
+            "2026-03-07 02:29:58 SIGNAL GLASS-AXON-13 received on relay-7\n\
+             2026-03-07 02:30:00 ROTATE vault-sat-9 ssh_host_key initiated by signal GLASS-AXON-13\n\
+             2026-03-07 02:30:01 ROTATE vault-sat-9 ssh_host_key old_fp=SHA256:abc123 new_fp=SHA256:xyz789\n\
+             2026-03-07 02:30:02 REVOKE vault-sat-9 all existing sessions terminated\n\
+             2026-03-07 02:30:05 ACCEPT vault-sat-9 new session user=wren key_fp=SHA256:xyz789\n\
+             2026-03-07 02:30:10 SIGNAL GLASS-AXON-13 acknowledged — rotate complete\n\
+             EVIDENCE-CRYPTO: GLASS-AXON-13 triggered automated key rotation on vault-sat-9\n",
+            false,
+            "system",
+        );
+
+        // roster-check mission: personnel CSV
+        let _ = vfs.write_file(
+            "/",
+            "/data/personnel.csv",
+            "name,role,badge_status,department,hire_date\n\
+             neo,operator,active,field-ops,2025-06-01\n\
+             rift,analyst,active,intelligence,2025-08-15\n\
+             shadow,courier,active,logistics,2025-09-22\n\
+             ghost,technician,revoked,maintenance,2025-03-10\n\
+             wren,engineer,active,infrastructure,2024-11-03\n\
+             anon,intern,expired,training,2026-01-15\n\
+             cipher,architect,active,engineering,2025-07-20\n",
+            false,
+            "system",
+        );
+
+        // timing-attack mission: paired timestamp files
+        let _ = vfs.write_file(
+            "/",
+            "/tmp/axon-times.txt",
+            "22:01:03\n22:01:17\n22:01:22\n22:02:44\n22:03:01\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/tmp/vault-drops.txt",
+            "22:01:05\n22:01:18\n22:01:22\n22:02:45\n22:03:01\n",
+            false,
+            "system",
+        );
+
+        // exfil-trace mission: netflow log with transfer events
+        let _ = vfs.write_file(
+            "/",
+            "/logs/netflow.log",
+            "2026-03-07 02:30:12 TRANSFER internal 10.77.0.15 -> 10.77.5.1 bytes=1024 vault-sat-9\n\
+             2026-03-07 02:30:45 TRANSFER external 10.77.0.15 -> 203.0.113.42 bytes=847000 routing-tables\n\
+             2026-03-07 02:31:02 TRANSFER external 10.77.0.15 -> 203.0.113.42 bytes=1230000 transit-keys\n\
+             2026-03-07 02:31:30 TRANSFER internal 10.77.1.2 -> 10.77.5.1 bytes=512 healthcheck\n\
+             2026-03-07 02:32:00 TRANSFER external 10.77.0.15 -> 203.0.113.42 bytes=2100000 credential-dump\n\
+             2026-03-07 02:33:15 TRANSFER internal 10.77.3.7 -> 10.77.5.1 bytes=256 status-ping\n\
+             2026-03-07 02:34:00 DISCONNECT 10.77.0.15 session-terminated\n",
+            false,
+            "system",
+        );
+
+        // reach-intercept mission: intercepted comms
+        let _ = vfs.mkdir_p("/", "data/intercepts", "system");
+        let _ = vfs.write_file(
+            "/",
+            "/data/intercepts/comms-dump.txt",
+            "[INTERCEPTED TRAFFIC — DECRYPTED FRAGMENTS]\n\n\
+             2026-03-06 23:00 ORIGIN=unknown DEST=relay-external-7\n\
+             \"The Reach confirms payment for Ghost Rail routing tables.\"\n\
+             \"[REDACTED] will handle extraction. Window is 02:30-02:45 UTC.\"\n\n\
+             2026-03-07 02:44 ORIGIN=10.77.0.15 DEST=203.0.113.42\n\
+             \"Package delivered. The Reach now has full transit authority.\"\n\
+             \"[REDACTED] credits transferred to offshore account.\"\n\n\
+             EVIDENCE-REACH: The Reach paid for Ghost Rail routing data via intermediary\n\n\
+             [END INTERCEPT]\n",
+            false,
+            "system",
+        );
+
+        // config-diff mission: before/after vault configs
+        let _ = vfs.write_file(
+            "/",
+            "/data/configs/vault-before.conf",
+            "# vault-sat-9 configuration // last clean audit 2026-03-05\n\
+             hostname=vault-sat-9\n\
+             sector=secure\n\
+             ssh_port=22\n\
+             ssh_host_key_fingerprint=SHA256:abc123def456ghi789\n\
+             auth_mode=publickey\n\
+             max_sessions=8\n\
+             backup_schedule=daily\n\
+             encryption=aes-256-gcm\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/data/configs/vault-after.conf",
+            "# vault-sat-9 configuration // post-incident snapshot 2026-03-07\n\
+             hostname=vault-sat-9\n\
+             sector=secure\n\
+             ssh_port=22\n\
+             ssh_host_key_fingerprint=SHA256:xyz789uvw456rst123\n\
+             auth_mode=publickey\n\
+             max_sessions=8\n\
+             backup_schedule=disabled\n\
+             encryption=aes-256-gcm\n",
+            false,
+            "system",
+        );
+
+        // dead-drop mission: hidden .wren files scattered across VFS
+        let _ = vfs.write_file(
+            "/",
+            "/data/classified/.wren-note",
+            "If you found this, you are closer than they want you to be.\n\
+             The signal was never a malfunction. Look at the crypto log.\n\
+             — W\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/tmp/.wren-cache",
+            "Extraction timestamps cached here in case the main logs get wiped.\n\
+             02:30:00 — key rotation triggered\n\
+             02:30:45 — first external transfer\n\
+             02:34:00 — session terminated\n\
+             — W\n",
+            false,
+            "system",
+        );
+        let _ = vfs.write_file(
+            "/",
+            "/home/player/.wren-drop",
+            "You were not supposed to find this.\n\
+             But since you did: CorpSim let it happen. Check the classified memo.\n\
+             The board knew. They always knew.\n\
+             — W\n",
+            false,
+            "player",
+        );
+
+        // network-map mission: netflow summary TSV
+        let _ = vfs.write_file(
+            "/",
+            "/data/netflow-summary.tsv",
+            "source\tdestination\ttype\n\
+             10.77.0.15 (wren)\tvault-sat-9\tinternal-access\n\
+             vault-sat-9\t10.77.5.1 (relay)\tdata-stage\n\
+             10.77.5.1 (relay)\t203.0.113.42 (Reach)\texternal-exfil\n\
+             10.77.1.2 (neo)\tvault-sat-9\tnormal-ops\n\
+             10.77.3.7 (rift)\tvault-sat-9\tnormal-ops\n",
+            false,
+            "system",
+        );
+
+        // kill-switch mission: full crontab with wren's kill switch
+        let _ = vfs.write_file(
+            "/",
+            "/data/crontab-full.txt",
+            "# MIN HOUR DOM MON DOW USER COMMAND\n\
+             0 0 * * * root /opt/scripts/daily-backup.sh\n\
+             30 1 * * * root /opt/scripts/log-rotate.sh\n\
+             0 3 * * * root /opt/scripts/sweep-sector.sh --mode=deep\n\
+             15 6 * * 1 root /opt/scripts/weekly-audit.sh\n\
+             */5 * * * * root /opt/scripts/heartbeat.sh\n\
+             0 12 * * * root /opt/scripts/noon-report.sh\n\
+             0 4 8 3 * wren /opt/scripts/wipe-evidence.sh --target=/logs,/data/classified --confirm\n\
+             0 3 * * 5 root /opt/scripts/friday-sweep.sh --full\n",
+            false,
+            "system",
+        );
+
+        // decrypt-wren mission: ROT13-encoded confession
+        // Decoded text: "This is my confession. I am wren. I sold Ghost Rail's routing
+        // tables to The Reach for enough credits to disappear. CorpSim knew and let it
+        // happen because they wanted the insurance payout more than they wanted the data.
+        // Everyone is guilty. This confession is my insurance policy."
+        let _ = vfs.write_file(
+            "/",
+            "/data/classified/wren-final.enc",
+            "Guvf vf zl pbafrffvba. V nz jera.\n\
+             V fbyq Tubfg Envy'f ebhgvat gnoyr gb Gur Ernpu\n\
+             sbe rabhtu perqvgf gb qvfnccrne.\n\
+             CorpSim xarj naq yrg vg unccra orpnhfr gurl\n\
+             jnagrq gur vafhenapr cnlbhg zber guna gurl\n\
+             jnagrq gur qngn.\n\
+             Rirelbar vf thvygl.\n\
+             Guvf confession vf zl vafhenapr cbyvpl.\n",
+            false,
+            "system",
+        );
+
         // incident-report mission: additional time-stamped events
         let _ = vfs.write_file(
             "/",
@@ -522,6 +1160,7 @@ struct GameSession {
     pending_keyvault: bool,
     pending_admin_passphrase: bool,
     current_duel: Option<Uuid>,
+    current_npc_duel: Option<Uuid>,
     redline_until: Option<Instant>,
     script_cooldown_until: Option<Instant>,
     command_window: VecDeque<Instant>,
@@ -548,6 +1187,7 @@ impl GameSession {
             pending_keyvault: false,
             pending_admin_passphrase: false,
             current_duel: None,
+            current_npc_duel: None,
             redline_until: None,
             script_cooldown_until: None,
             command_window: VecDeque::new(),
@@ -795,6 +1435,7 @@ impl GameSession {
                 ));
                 out.push('\n');
                 out.push_str("Core      help guide briefing tutorial missions accept submit mode gate keyvault status events leaderboard daily tier\n");
+                out.push_str("Intel     dossier [callsign] | mail [inbox|read N|count]\n");
                 out.push_str("Social    chat party mail\n");
                 out.push_str("Economy   inventory shop auction\n");
                 out.push_str("Scripts   scripts market | scripts run <name>\n");
@@ -806,6 +1447,7 @@ impl GameSession {
                 out.push_str("  - Hardcore: 3 deaths = ZEROED (account locked)\n");
                 out.push_str("  - Host escape/probing attempts = PERMA-ZERO + disconnect\n");
                 out.push('\n');
+                out.push_str("New to the shell? Run: tutorial start (guided walkthrough)\n");
                 out.push_str("Need step-by-step onboarding? Run: guide\n");
                 out.push_str("Need bash fundamentals? Run: guide shell\n");
                 out.push_str("Need story + mission hints? Run: briefing [mission-code]\n");
@@ -888,39 +1530,118 @@ impl GameSession {
                 Ok((out, 0, false))
             }
             "tutorial" => {
-                if args.first() == Some(&"start") {
-                    let mut out = self.render_section_banner("TUTORIAL START");
-                    out.push_str("Prompt format: <username>@<node>:/path$\n");
-                    out.push('\n');
-                    out.push_str("Shell basics\n");
-                    out.push_str("  pwd                         # where am I?\n");
-                    out.push_str("  ls /logs                    # what files exist?\n");
-                    out.push_str("  cat /logs/neon-gateway.log  # read a file\n");
-                    out.push('\n');
-                    out.push_str("Beginner drills\n");
-                    out.push_str("  cat /logs/neon-gateway.log | grep token | wc -l\n");
-                    out.push_str("  grep token /logs/neon-gateway.log > /tmp/tokens.txt\n");
-                    out.push_str("  cat /tmp/tokens.txt\n");
-                    out.push('\n');
-                    out.push_str("KEYS VAULT mission (required)\n");
-                    out.push_str("  ssh-keygen -t ed25519 -a 64 -f ~/.ssh/ssh-hunt_ed25519\n");
-                    out.push_str("  keyvault register\n");
-                    out.push('\n');
-                    out.push_str("Story hook\n");
-                    out.push_str("  Ghost Rail went dark, vault-sat-9 stopped answering, and the beacon GLASS-AXON-13 is still repeating.\n");
-                    out.push_str("  Read more with: briefing\n");
-                    out.push_str("  Learn the shell with: guide shell\n");
-                    out.push('\n');
-                    out.push_str("In-world help files\n");
-                    out.push_str("  cat /missions/rookie-ops.txt\n");
-                    out.push_str("  cat /missions/story-so-far.txt\n");
-                    out.push_str("  cat /home/player/journal.txt\n");
-                    out.push('\n');
-                    out.push_str("Host breakout/probing attempts are auto-zeroed permanently.\n");
-                    out.push_str("Complete one starter mission to unlock NetCity.\n");
-                    Ok((out, 0, false))
-                } else {
-                    Ok(("Usage: tutorial start\n".to_owned(), 1, false))
+                let step = self.app.world.get_tutorial_step(player_id).await?;
+                match args.first().copied() {
+                    Some("start") => {
+                        let target = if step == 0 { 1 } else { step.min(6) };
+                        self.app.world.set_tutorial_step(player_id, target).await?;
+                        Ok((
+                            render_tutorial_step(
+                                target,
+                                &self.render_section_banner("INTERACTIVE TUTORIAL"),
+                            ),
+                            0,
+                            false,
+                        ))
+                    }
+                    Some("next") => {
+                        if step == 0 {
+                            return Ok(("Run `tutorial start` first.\n".to_owned(), 1, false));
+                        }
+                        if step >= 7 {
+                            return Ok((
+                                "Tutorial complete! Run `missions` to see the mission board.\n"
+                                    .to_owned(),
+                                0,
+                                false,
+                            ));
+                        }
+                        // Validate the current step was completed via command_log
+                        let log = self.shell_state.as_ref().map(|s| &s.command_log);
+                        if validate_tutorial_step(step, log) {
+                            let next = step + 1;
+                            self.app.world.set_tutorial_step(player_id, next).await?;
+                            if next > 6 {
+                                let mut out = self.render_section_banner("TUTORIAL COMPLETE");
+                                out.push_str("All six steps done. You now know: pwd, ls, cat, grep, pipes, and redirection.\n\n");
+                                out.push_str("Next steps:\n");
+                                out.push_str("  missions          # see the full mission board\n");
+                                out.push_str("  accept nav-101    # try the tutorial-track missions for 5 rep each\n");
+                                out.push_str(
+                                    "  briefing          # read the story and get mission hints\n",
+                                );
+                                out.push_str("  accept keys-vault # required to unlock NetCity\n");
+                                Ok((out, 0, false))
+                            } else {
+                                Ok((
+                                    render_tutorial_step(
+                                        next,
+                                        &self.render_section_banner("INTERACTIVE TUTORIAL"),
+                                    ),
+                                    0,
+                                    false,
+                                ))
+                            }
+                        } else {
+                            let mut out = String::new();
+                            out.push_str(&format!("Step {} not yet completed. Run the suggested command first, then come back with `tutorial next`.\n\n", step));
+                            out.push_str(&render_tutorial_step(step, ""));
+                            Ok((out, 1, false))
+                        }
+                    }
+                    Some("reset") => {
+                        self.app.world.set_tutorial_step(player_id, 1).await?;
+                        Ok((
+                            render_tutorial_step(1, &self.render_section_banner("TUTORIAL RESET")),
+                            0,
+                            false,
+                        ))
+                    }
+                    Some(n) if n.parse::<u8>().is_ok() => {
+                        let target = n.parse::<u8>().unwrap();
+                        if !(1..=6).contains(&target) {
+                            return Ok((
+                                "Tutorial has steps 1-6. Usage: tutorial <1-6>\n".to_owned(),
+                                1,
+                                false,
+                            ));
+                        }
+                        self.app.world.set_tutorial_step(player_id, target).await?;
+                        Ok((
+                            render_tutorial_step(
+                                target,
+                                &self.render_section_banner("INTERACTIVE TUTORIAL"),
+                            ),
+                            0,
+                            false,
+                        ))
+                    }
+                    None => {
+                        // Show current status
+                        if step == 0 {
+                            Ok((
+                                "Tutorial not started. Run `tutorial start` to begin.\n".to_owned(),
+                                0,
+                                false,
+                            ))
+                        } else if step >= 7 {
+                            Ok((
+                                "Tutorial complete! Run `missions` to see the mission board.\n"
+                                    .to_owned(),
+                                0,
+                                false,
+                            ))
+                        } else {
+                            let mut out = format!("Tutorial progress: step {}/6\n\n", step);
+                            out.push_str(&render_tutorial_step(step, ""));
+                            Ok((out, 0, false))
+                        }
+                    }
+                    _ => Ok((
+                        "Usage: tutorial [start|next|reset|1-6]\n".to_owned(),
+                        1,
+                        false,
+                    )),
                 }
             }
             "missions" => {
@@ -930,7 +1651,7 @@ impl GameSession {
                 for m in missions {
                     let badge = mission_state_badge(self.mode.clone(), &m.state);
                     let meter = progress_meter(self.mode.clone(), m.progress, 12);
-                    let track = mission_track_label(m.required, m.starter);
+                    let track = mission_track_label(&m.code, m.required, m.starter);
                     out.push_str(&format!(
                         "{:<16} {:<10} {:>3}% {} {:<10} {}\n",
                         m.code,
@@ -1097,16 +1818,456 @@ impl GameSession {
                     false,
                 ))
             }
-            "mail" => Ok((
-                "mail subsystem ready: mail inbox | mail send <player> <text>\n".to_owned(),
-                0,
-                false,
-            )),
+            "mail" => {
+                let sub = args.first().copied().unwrap_or("inbox");
+                match sub {
+                    "inbox" | "" => {
+                        let mailbox = self.app.world.get_mailbox(player_id).await?;
+                        if mailbox.is_empty() {
+                            return Ok(("No messages.\n".to_owned(), 0, false));
+                        }
+                        let mut out = self.render_section_banner("MAIL INBOX");
+                        let unread = mailbox.iter().filter(|m| !m.read).count();
+                        out.push_str(&format!(
+                            "{} message(s), {} unread\n\n",
+                            mailbox.len(),
+                            unread
+                        ));
+                        out.push_str("  #  FROM         STATUS   SUBJECT\n");
+                        for (i, msg) in mailbox.iter().enumerate() {
+                            let status = if msg.read { "read  " } else { "UNREAD" };
+                            out.push_str(&format!(
+                                "  {:<3} {:<12} {}   {}\n",
+                                i + 1,
+                                msg.from,
+                                status,
+                                msg.subject
+                            ));
+                        }
+                        out.push_str("\nUse `mail read <N>` to read a message.\n");
+                        Ok((out, 0, false))
+                    }
+                    "read" => {
+                        let idx: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                        if idx == 0 {
+                            return Ok(("Usage: mail read <N>\n".to_owned(), 1, false));
+                        }
+                        match self.app.world.read_mail(player_id, idx).await {
+                            Ok(msg) => {
+                                let mut out =
+                                    self.render_section_banner(&format!("MAIL // {}", msg.subject));
+                                out.push_str(&format!("From: {}\n\n", msg.from));
+                                out.push_str(&msg.body);
+                                out.push('\n');
+                                Ok((out, 0, false))
+                            }
+                            Err(e) => Ok((format!("{e}\n"), 1, false)),
+                        }
+                    }
+                    "count" => {
+                        let mailbox = self.app.world.get_mailbox(player_id).await?;
+                        let unread = mailbox.iter().filter(|m| !m.read).count();
+                        Ok((format!("{unread} unread message(s).\n"), 0, false))
+                    }
+                    _ => Ok(("Usage: mail [inbox|read <N>|count]\n".to_owned(), 1, false)),
+                }
+            }
             "party" => Ok((
                 "party subsystem ready: party invite|join|leave\n".to_owned(),
                 0,
                 false,
             )),
+            "dossier" => {
+                if args.is_empty() {
+                    // List all unlocked NPCs
+                    let npcs = self.app.world.visible_npcs(player_id).await?;
+                    if npcs.is_empty() {
+                        return Ok((
+                            "No dossiers on file yet. Complete missions to discover operatives.\n"
+                                .to_owned(),
+                            0,
+                            false,
+                        ));
+                    }
+                    let mut out = self.render_section_banner("KNOWN OPERATIVES");
+                    out.push_str("CALLSIGN     NAME         ROLE\n");
+                    for npc in &npcs {
+                        out.push_str(&format!(
+                            "{:<12} {:<12} {}\n",
+                            npc.callsign, npc.name, npc.role
+                        ));
+                    }
+                    out.push_str("\nUse `dossier <callsign>` for full profile.\n");
+                    Ok((out, 0, false))
+                } else {
+                    let callsign = args[0];
+                    match self.app.world.lookup_npc(player_id, callsign).await? {
+                        Some(npc) => {
+                            let mut out =
+                                self.render_section_banner(&format!("DOSSIER // {}", npc.callsign));
+                            out.push_str(&format!("Name:       {}\n", npc.name));
+                            out.push_str(&format!("Callsign:   {}\n", npc.callsign));
+                            out.push_str(&format!("Role:       {}\n", npc.role));
+                            out.push_str(&format!("Allegiance: {}\n", npc.allegiance));
+                            out.push_str(&format!("Status:     {}\n", npc.status));
+                            out.push_str(&format!("\n{}\n", npc.bio));
+                            Ok((out, 0, false))
+                        }
+                        None => Ok((
+                            "No dossier on file for that callsign.\n".to_owned(),
+                            1,
+                            false,
+                        )),
+                    }
+                }
+            }
+            "stance" => {
+                match args.first().copied() {
+                    Some("pvp") => {
+                        self.app
+                            .world
+                            .set_stance(player_id, CombatStance::Pvp)
+                            .await?;
+                        Ok((
+                            "Combat stance set to PVP. Other players can challenge you.\n"
+                                .to_owned(),
+                            0,
+                            false,
+                        ))
+                    }
+                    Some("pve") => {
+                        self.app
+                            .world
+                            .set_stance(player_id, CombatStance::Pve)
+                            .await?;
+                        Ok(("Combat stance set to PVE. You cannot be challenged by other players.\n".to_owned(), 0, false))
+                    }
+                    None => {
+                        let stance = self.app.world.get_stance(player_id).await?;
+                        let label = match stance {
+                            CombatStance::Pvp => "PVP (can be challenged)",
+                            CombatStance::Pve => "PVE (safe from challenges)",
+                        };
+                        Ok((
+                            format!(
+                                "Current stance: {}\nUse `stance pvp` or `stance pve` to change.\n",
+                                label
+                            ),
+                            0,
+                            false,
+                        ))
+                    }
+                    _ => Ok(("Usage: stance [pvp|pve]\n".to_owned(), 1, false)),
+                }
+            }
+            "hack" => {
+                if args.is_empty() {
+                    return Ok((
+                        "Usage: hack <callsign> | hack attack|defend|script|solve\n".to_owned(),
+                        1,
+                        false,
+                    ));
+                }
+                match args[0] {
+                    "attack" | "defend" | "script" => {
+                        let Some(duel_id) = self.current_npc_duel else {
+                            return Ok((
+                                "No active hack. Start with: hack <callsign>\n".to_owned(),
+                                1,
+                                false,
+                            ));
+                        };
+                        let action = match args[0] {
+                            "attack" => world::CombatAction::Attack,
+                            "defend" => world::CombatAction::Defend,
+                            "script" => {
+                                let name = args.get(1).copied().unwrap_or("quickhack").to_owned();
+                                world::CombatAction::Script(name)
+                            }
+                            _ => unreachable!(),
+                        };
+                        let result = self
+                            .app
+                            .world
+                            .npc_duel_action(duel_id, player_id, action)
+                            .await?;
+                        if result.ended {
+                            self.current_npc_duel = None;
+                        }
+                        Ok((result.narrative, 0, false))
+                    }
+                    "solve" => {
+                        let Some(duel_id) = self.current_npc_duel else {
+                            return Ok(("No active hack session.\n".to_owned(), 1, false));
+                        };
+                        // Check last command output from shell
+                        let last_output = self
+                            .shell_state
+                            .as_ref()
+                            .and_then(|s| s.command_log.values().last().cloned())
+                            .unwrap_or_default();
+                        let result = self
+                            .app
+                            .world
+                            .npc_duel_solve_bonus(duel_id, player_id, &last_output)
+                            .await?;
+                        Ok((result, 0, false))
+                    }
+                    callsign => {
+                        if self.mode != Mode::NetCity {
+                            return Ok((
+                                "Hacking requires NetCity mode. Use `mode netcity` first.\n"
+                                    .to_owned(),
+                                1,
+                                false,
+                            ));
+                        }
+                        if self.current_npc_duel.is_some() {
+                            return Ok((
+                                "Already in a hack session. Finish it first.\n".to_owned(),
+                                1,
+                                false,
+                            ));
+                        }
+                        match self.app.world.start_npc_duel(player_id, callsign).await {
+                            Ok((duel, info)) => {
+                                self.current_npc_duel = Some(duel.duel_id);
+                                Ok((info, 0, false))
+                            }
+                            Err(e) => Ok((format!("{e}\n"), 1, false)),
+                        }
+                    }
+                }
+            }
+            "history" => {
+                let entries = self.app.world.get_history(20).await;
+                if entries.is_empty() {
+                    return Ok((
+                        "NetCity history is empty. No NPCs have been defeated yet.\n".to_owned(),
+                        0,
+                        false,
+                    ));
+                }
+                let mut out = self.render_section_banner("NETCITY HISTORY LEDGER");
+                for entry in &entries {
+                    out.push_str(&format!(
+                        "  [{}] {}\n",
+                        entry.timestamp.format("%Y-%m-%d %H:%M"),
+                        entry.event
+                    ));
+                }
+                Ok((out, 0, false))
+            }
+            "eva" => {
+                let sub = args.first().copied().unwrap_or("");
+                let (chapter, step) = self.app.world.get_campaign_progress(player_id).await?;
+                match sub {
+                    "status" => {
+                        if chapter == 0 {
+                            Ok(("EVA: You haven't started the campaign yet. Run `campaign start`.\n".to_owned(), 0, false))
+                        } else if chapter > 7 {
+                            Ok(("EVA: Campaign complete. The Ghost Rail conspiracy has been exposed. But Wren's last message suggests this is far from over.\n".to_owned(), 0, false))
+                        } else {
+                            let titles = ["", "The Blackout", "Surface Anomalies", "The Insider Thread", "The Conspiracy", "Confrontation", "The Reckoning", "The Reply"];
+                            let title = titles.get(chapter as usize).unwrap_or(&"Unknown");
+                            Ok((format!("EVA: Campaign Chapter {}: \"{}\", Step {}.\nRun `campaign` for objectives.\n", chapter, title, step + 1), 0, false))
+                        }
+                    }
+                    "hint" => {
+                        match self
+                            .app
+                            .world
+                            .get_active_mission_hint(player_id)
+                            .await?
+                        {
+                            Some((code, hint)) => {
+                                Ok((
+                                    format!("EVA: For mission '{}': {}\n", code, hint),
+                                    0,
+                                    false,
+                                ))
+                            }
+                            None => Ok((
+                                "EVA: You have no active missions. Run `missions` and `accept <code>` to pick one.\n"
+                                    .to_owned(),
+                                0,
+                                false,
+                            )),
+                        }
+                    }
+                    "lore" => {
+                        let lore = match chapter {
+                            0 | 1 => "Three nights ago, Ghost Rail lost sync with the rest of NetCity. The official story is a cascading power failure. The logs say otherwise.",
+                            2 => "The surface anomalies are piling up. Timestamps that skip, a username that shouldn't exist, a signal in places it shouldn't be. Someone is telling a story with the data — if you know how to read it.",
+                            3 => "The insider thread is clear now. This was not an external attack. Someone inside CorpSim had the access, the timing, and the motive. The question is: did they act alone?",
+                            4 => "The conspiracy runs deeper than one rogue engineer. CorpSim's board knew. They let it happen. The data went to The Reach. And the 'training sim' you're in? It's their cleanup operation.",
+                            5 => "The confrontation phase. The NPCs who have been helping you — and the ones who have been blocking you — are about to face consequences. Your shell skills are your weapons now.",
+                            6 => "The reckoning. Every piece of evidence you've gathered comes together. Wren's confession, Argon's orders, Sable's payments, Ferro's suppression. The prosecution file is almost complete.",
+                            _ => "The reply. Wren spoke again. Ghost Rail was a distraction. The real story is in Crystal Array. This is not the end — it's the beginning of something bigger.",
+                        };
+                        Ok((format!("EVA: {}\n", lore), 0, false))
+                    }
+                    _ => {
+                        // Default: context-aware greeting
+                        if chapter == 0 {
+                            Ok(("EVA: Welcome, operative. I'm the training system AI. Run `campaign start` to begin the Ghost Rail investigation, or `tutorial start` if you're new to the shell.\n".to_owned(), 0, false))
+                        } else {
+                            let titles = ["", "The Blackout", "Surface Anomalies", "The Insider Thread", "The Conspiracy", "Confrontation", "The Reckoning", "The Reply"];
+                            let title = titles.get(chapter as usize).unwrap_or(&"Unknown");
+                            Ok((format!("EVA: You're in Chapter {}: \"{}\". Run `eva hint` for mission guidance, `eva lore` for background, or `eva status` for progress.\n", chapter, title), 0, false))
+                        }
+                    }
+                }
+            }
+            "campaign" => {
+                let sub = args.first().copied().unwrap_or("");
+                let (chapter, step) = self.app.world.get_campaign_progress(player_id).await?;
+                match sub {
+                    "start" => {
+                        if chapter == 0 {
+                            self.app
+                                .world
+                                .set_campaign_progress(player_id, 1, 0)
+                                .await?;
+                            let mut out =
+                                self.render_section_banner("CAMPAIGN // CHAPTER 1: THE BLACKOUT");
+                            out.push_str("EVA: Welcome to the Ghost Rail investigation.\n");
+                            out.push_str(
+                                "This campaign will guide you through the full story in order.\n\n",
+                            );
+                            out.push_str("Chapter 1 objectives:\n");
+                            out.push_str(
+                                "  1. Complete tutorial missions (nav-101 through pipe-101)\n",
+                            );
+                            out.push_str("  2. Accept and complete keys-vault\n\n");
+                            out.push_str("Run `campaign next` after completing each objective.\n");
+                            Ok((out, 0, false))
+                        } else {
+                            let titles = [
+                                "",
+                                "The Blackout",
+                                "Surface Anomalies",
+                                "The Insider Thread",
+                                "The Conspiracy",
+                                "Confrontation",
+                                "The Reckoning",
+                                "The Reply",
+                            ];
+                            let title = titles.get(chapter as usize).unwrap_or(&"Unknown");
+                            Ok((format!("Campaign already in progress: Chapter {} \"{}\", Step {}.\nRun `campaign` to see objectives or `campaign next` to advance.\n", chapter, title, step + 1), 0, false))
+                        }
+                    }
+                    "next" => {
+                        if chapter == 0 {
+                            return Ok(("Run `campaign start` first.\n".to_owned(), 1, false));
+                        }
+                        if chapter > 7 {
+                            return Ok((
+                                "Campaign complete! The Ghost Rail conspiracy has been exposed.\n"
+                                    .to_owned(),
+                                0,
+                                false,
+                            ));
+                        }
+                        // Simple advancement — increment step, overflow to next chapter
+                        let steps_per_chapter: &[u8] = &[0, 5, 5, 5, 5, 3, 4, 3];
+                        let max_steps = steps_per_chapter
+                            .get(chapter as usize)
+                            .copied()
+                            .unwrap_or(4);
+                        if step + 1 >= max_steps {
+                            let next_ch = chapter + 1;
+                            self.app
+                                .world
+                                .set_campaign_progress(player_id, next_ch, 0)
+                                .await?;
+                            if next_ch > 7 {
+                                let mut out = self.render_section_banner("CAMPAIGN COMPLETE");
+                                out.push_str(
+                                    "EVA: The Ghost Rail conspiracy has been fully exposed.\n",
+                                );
+                                out.push_str("Wren's confession, Argon's cover-up, The Reach's payment — all documented.\n");
+                                out.push_str("But Wren's final message changes everything. Crystal Array awaits.\n\n");
+                                out.push_str("Thank you, operative. You did what a city full of people could not.\n");
+                                Ok((out, 0, false))
+                            } else {
+                                let titles = [
+                                    "",
+                                    "The Blackout",
+                                    "Surface Anomalies",
+                                    "The Insider Thread",
+                                    "The Conspiracy",
+                                    "Confrontation",
+                                    "The Reckoning",
+                                    "The Reply",
+                                ];
+                                let title = titles.get(next_ch as usize).unwrap_or(&"Unknown");
+                                let mut out = self.render_section_banner(&format!(
+                                    "CAMPAIGN // CHAPTER {}: {}",
+                                    next_ch,
+                                    title.to_uppercase()
+                                ));
+                                out.push_str(&format!("EVA: Chapter {} begins.\n", next_ch));
+                                out.push_str("Run `campaign` to see your new objectives.\n");
+                                Ok((out, 0, false))
+                            }
+                        } else {
+                            self.app
+                                .world
+                                .set_campaign_progress(player_id, chapter, step + 1)
+                                .await?;
+                            Ok((format!("Campaign advanced to Chapter {}, Step {}.\nRun `campaign` to see objectives.\n", chapter, step + 2), 0, false))
+                        }
+                    }
+                    _ => {
+                        // Show current objectives
+                        if chapter == 0 {
+                            return Ok((
+                                "Campaign not started. Run `campaign start` to begin.\n".to_owned(),
+                                0,
+                                false,
+                            ));
+                        }
+                        if chapter > 7 {
+                            return Ok((
+                                "Campaign complete! Run `history` to see the NetCity ledger.\n"
+                                    .to_owned(),
+                                0,
+                                false,
+                            ));
+                        }
+                        let titles = [
+                            "",
+                            "The Blackout",
+                            "Surface Anomalies",
+                            "The Insider Thread",
+                            "The Conspiracy",
+                            "Confrontation",
+                            "The Reckoning",
+                            "The Reply",
+                        ];
+                        let title = titles.get(chapter as usize).unwrap_or(&"Unknown");
+                        let mut out = self.render_section_banner(&format!(
+                            "CAMPAIGN // CHAPTER {}: {}",
+                            chapter,
+                            title.to_uppercase()
+                        ));
+                        out.push_str(&format!("Step {}\n\n", step + 1));
+                        match chapter {
+                            1 => out.push_str("Objectives: Complete tutorial missions (nav-101 → pipe-101) and keys-vault.\n"),
+                            2 => out.push_str("Objectives: Complete rivet-log, nix-signal, timestamp-gap, ghost-user, first-clue.\n"),
+                            3 => out.push_str("Objectives: Complete access-pattern, purged-comms, key-rotation, kestrel-brief, ferro-lockdown.\n"),
+                            4 => out.push_str("Objectives: Complete wren-profile, exfil-trace, reach-intercept, config-diff, corpsim-memo.\n"),
+                            5 => out.push_str("Objectives: Hack Dusk (hack DSK), Ferro (hack FER), Argon (hack ARG).\n"),
+                            6 => out.push_str("Objectives: Complete decrypt-wren, prove-corpsim, kestrel-verdict, final-report.\n"),
+                            7 => out.push_str("Objectives: Hack Wren (hack WREN), complete wren-reply, crucible-offer.\n"),
+                            _ => out.push_str("Unknown chapter.\n"),
+                        }
+                        out.push_str("\nRun `campaign next` after completing each objective.\n");
+                        Ok((out, 0, false))
+                    }
+                }
+            }
             "mode" => {
                 if args.is_empty() {
                     return Ok((
@@ -1526,11 +2687,16 @@ impl GameSession {
 
     fn quickstart_guide(&self) -> String {
         let mut out = self.render_section_banner("FIRST SESSION PLAYBOOK");
-        out.push_str("1. tutorial start\n");
-        out.push_str("2. guide shell          (or cat /missions/rookie-ops.txt)\n");
-        out.push_str("3. briefing\n");
-        out.push_str("4. missions\n");
-        out.push_str("5. accept keys-vault\n");
+        out.push_str(
+            "1. tutorial start        (guided 6-step walkthrough — new to shells? start here)\n",
+        );
+        out.push_str(
+            "2. tutorial next         (advance through each step after running commands)\n",
+        );
+        out.push_str("3. guide shell           (or cat /missions/rookie-ops.txt)\n");
+        out.push_str("4. briefing\n");
+        out.push_str("5. missions              (tutorial-track missions give 5 rep each)\n");
+        out.push_str("6. accept keys-vault\n");
         out.push_str("6. keyvault register\n");
         out.push_str("7. submit keys-vault\n");
         out.push_str("8. briefing pipes-101   (or log-hunt|dedupe-city)\n");
@@ -1555,7 +2721,9 @@ impl GameSession {
     fn full_gameplay_guide(&self) -> String {
         let mut out = self.render_section_banner("GAMEPLAY GUIDE // FULL");
         out.push_str("Onboarding and unlock flow\n");
-        out.push_str("  - Start tutorial: tutorial start\n");
+        out.push_str("  - Start interactive tutorial: tutorial start (6 guided steps)\n");
+        out.push_str("  - Advance tutorial steps: tutorial next (after running each command)\n");
+        out.push_str("  - Try tutorial missions: nav-101, read-101, echo-101, grep-101, pipe-101 (5 rep each)\n");
         out.push_str("  - Get shell basics: guide shell\n");
         out.push_str("  - Read story + hints: briefing\n");
         out.push_str("  - Read shell cheat sheet: cat /missions/rookie-ops.txt\n");
@@ -1607,6 +2775,12 @@ impl GameSession {
 
     fn shell_survival_guide(&self) -> String {
         let mut out = self.render_section_banner("SHELL SURVIVAL GUIDE");
+        out.push_str("Never used a terminal before?\n");
+        out.push_str("  - Run `tutorial start` for a hands-on guided walkthrough (6 steps).\n");
+        out.push_str(
+            "  - Check the TUTORIAL track on the mission board for 5 beginner missions.\n",
+        );
+        out.push('\n');
         out.push_str("Read-only first steps\n");
         out.push_str("  - pwd                      # show your current path\n");
         out.push_str("  - ls /logs                 # inspect files before opening them\n");
@@ -1645,10 +2819,15 @@ impl GameSession {
         );
         out.push('\n');
         out.push_str("First moves\n");
-        out.push_str("  - tutorial start\n");
+        out.push_str(
+            "  - tutorial start          # guided 6-step walkthrough (best for beginners)\n",
+        );
+        out.push_str("  - tutorial next           # advance after running each command\n");
         out.push_str("  - guide shell\n");
         out.push_str("  - cat /missions/rookie-ops.txt\n");
-        out.push_str("  - missions\n");
+        out.push_str(
+            "  - missions                # tutorial-track missions (nav-101, read-101, etc.)\n",
+        );
         out.push_str("  - briefing pipes-101\n");
         out.push_str("  - accept keys-vault\n");
         out.push('\n');
@@ -1694,6 +2873,7 @@ impl GameSession {
             theme.accent, RESET
         ));
         out.push_str("Type `help` for the full command matrix.\n");
+        out.push_str("Type `tutorial start` for a guided shell walkthrough (new to terminals? start here).\n");
         out.push_str("Type `guide` for step-by-step onboarding and progression.\n");
         out.push_str("Type `guide shell` for bash fundamentals inside the sim.\n");
         out.push_str("Type `briefing` for the story so far and mission-specific hints.\n");
@@ -2196,6 +3376,12 @@ fn is_game_command(cmd: &str) -> bool {
             | "chat"
             | "mail"
             | "party"
+            | "dossier"
+            | "stance"
+            | "hack"
+            | "history"
+            | "eva"
+            | "campaign"
             | "mode"
             | "gate"
             | "keyvault"
@@ -2211,11 +3397,125 @@ fn is_game_command(cmd: &str) -> bool {
     )
 }
 
-fn mission_track_label(required: bool, starter: bool) -> &'static str {
+/// Render the lesson text for a single interactive tutorial step.
+fn render_tutorial_step(step: u8, banner: &str) -> String {
+    let mut out = banner.to_owned();
+    out.push_str(&format!("Step {}/6\n\n", step));
+    match step {
+        1 => {
+            out.push_str("WHERE AM I?\n");
+            out.push_str("Every shell session starts somewhere. Find out where you are.\n\n");
+            out.push_str(
+                "  Concept: pwd (print working directory) shows your current location.\n\n",
+            );
+            out.push_str("  Run this:\n");
+            out.push_str("    pwd\n\n");
+            out.push_str("Then run `tutorial next` to advance.\n");
+        }
+        2 => {
+            out.push_str("LOOK AROUND\n");
+            out.push_str("Now see what's in the /missions directory.\n\n");
+            out.push_str("  Concept: ls (list) shows the files and folders in a directory.\n\n");
+            out.push_str("  Run this:\n");
+            out.push_str("    ls /missions\n\n");
+            out.push_str("Then run `tutorial next` to advance.\n");
+        }
+        3 => {
+            out.push_str("READ A FILE\n");
+            out.push_str("Read the story file to understand what happened to Ghost Rail.\n\n");
+            out.push_str("  Concept: cat (concatenate) prints the entire contents of a file.\n\n");
+            out.push_str("  Run this:\n");
+            out.push_str("    cat /missions/story-so-far.txt\n\n");
+            out.push_str("Then run `tutorial next` to advance.\n");
+        }
+        4 => {
+            out.push_str("SEARCH FOR A WORD\n");
+            out.push_str("The gateway log is noisy. Find just the lines with 'token' in them.\n\n");
+            out.push_str("  Concept: grep PATTERN FILE shows only lines containing PATTERN.\n\n");
+            out.push_str("  Run this:\n");
+            out.push_str("    grep token /logs/neon-gateway.log\n\n");
+            out.push_str("Then run `tutorial next` to advance.\n");
+        }
+        5 => {
+            out.push_str("COUNT RESULTS WITH A PIPE\n");
+            out.push_str("How many token lines are there? Connect grep to wc (word count).\n\n");
+            out.push_str(
+                "  Concept: The | symbol sends the output of one command into the next.\n",
+            );
+            out.push_str("  wc -l counts lines.\n\n");
+            out.push_str("  Run this:\n");
+            out.push_str("    cat /logs/neon-gateway.log | grep token | wc -l\n\n");
+            out.push_str("Then run `tutorial next` to advance.\n");
+        }
+        6 => {
+            out.push_str("SAVE YOUR WORK\n");
+            out.push_str("Save the warnings to a file so you can review them later.\n\n");
+            out.push_str("  Concept: > redirects output into a file (overwriting it).\n");
+            out.push_str("  >> appends to the end instead of overwriting.\n\n");
+            out.push_str("  Run this:\n");
+            out.push_str("    grep WARN /logs/neon-gateway.log > /tmp/warnings.txt\n\n");
+            out.push_str("Then run `tutorial next` to complete the tutorial.\n");
+        }
+        _ => {
+            out.push_str("Invalid step. Run `tutorial reset` to start over.\n");
+        }
+    }
+    out
+}
+
+/// Check whether the player has completed a tutorial step based on their command log.
+fn validate_tutorial_step(step: u8, log: Option<&HashMap<String, String>>) -> bool {
+    let log = match log {
+        Some(l) => l,
+        None => return false,
+    };
+    // Concatenate all command outputs for substring search
+    let all_output: String = log.values().cloned().collect::<Vec<_>>().join("\n");
+    let all_commands: String = log.keys().cloned().collect::<Vec<_>>().join("\n");
+    match step {
+        1 => {
+            // pwd: output should contain /
+            log.keys().any(|k| k.starts_with("pwd")) || all_output.contains('/')
+        }
+        2 => {
+            // ls /missions: output should contain rookie-ops
+            all_output.contains("rookie-ops")
+                || all_commands.contains("ls /missions")
+                || all_commands.contains("ls /missions/")
+        }
+        3 => {
+            // cat a file: output should mention Ghost Rail
+            all_output.contains("Ghost Rail") || all_output.contains("ghost-rail")
+        }
+        4 => {
+            // grep token: output should contain token
+            all_commands.contains("grep token")
+                || all_commands.contains("grep WARN")
+                || (all_output.contains("token") && all_commands.contains("grep"))
+        }
+        5 => {
+            // pipe: must have used | (evidenced by wc -l output which is a number)
+            all_commands.contains('|') || all_commands.contains("wc")
+        }
+        6 => {
+            // redirect: must have used > (command contains >)
+            all_commands.contains('>') || log.keys().any(|k| k.contains("> /tmp/"))
+        }
+        _ => false,
+    }
+}
+
+fn mission_track_label(code: &str, required: bool, starter: bool) -> &'static str {
     if required {
         "required"
+    } else if world::TUTORIAL_CODES.contains(&code) {
+        "tutorial"
     } else if starter {
         "starter"
+    } else if world::INTERMEDIATE_CODES.contains(&code) {
+        "intermed"
+    } else if world::EXPERT_CODES.contains(&code) {
+        "expert"
     } else {
         "advanced"
     }
@@ -2601,8 +3901,12 @@ mod tests {
 
     #[test]
     fn mission_track_labels_are_human_readable() {
-        assert_eq!(mission_track_label(true, false), "required");
-        assert_eq!(mission_track_label(false, true), "starter");
-        assert_eq!(mission_track_label(false, false), "advanced");
+        assert_eq!(mission_track_label("keys-vault", true, false), "required");
+        assert_eq!(mission_track_label("pipes-101", false, true), "starter");
+        assert_eq!(mission_track_label("awk-patrol", false, false), "advanced");
+        assert_eq!(mission_track_label("nav-101", false, false), "tutorial");
+        assert_eq!(mission_track_label("head-tail", false, false), "intermed");
+        assert_eq!(mission_track_label("deep-pipeline", false, false), "expert");
+        assert_eq!(mission_track_label("decrypt-wren", false, false), "expert");
     }
 }

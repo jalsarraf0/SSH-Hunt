@@ -2,69 +2,59 @@
 
 [![CI](https://github.com/jalsarraf0/SSH-Hunt/actions/workflows/ci.yml/badge.svg)](https://github.com/jalsarraf0/SSH-Hunt/actions/workflows/ci.yml)
 
+### **[The Ghost Rail Conspiracy — Full Story & Lore](STORY.md)**
+
 > CI runs on self-hosted runners managed by [haskell-ci-orchestrator](https://github.com/jalsarraf0/haskell-ci-orchestrator) with build attestation. Lint, test, security, SBOM, Docker, and release jobs are unified in a single pipeline.
 
-SSH-Hunt is a publicly playable cyberpunk SSH game and terminal learning MMO.
+SSH-Hunt is a publicly playable cyberpunk SSH game and terminal learning MMO. Players connect via any SSH client, learn real shell commands through story-driven missions, hack NPCs, and unravel a conspiracy in a living world where defeated characters are replaced by harder successors.
 
-- Fully simulated shell and world, implemented in Rust.
-- Teaches practical shell habits through missions and progression.
-- Includes Training Sim, NetCity multiplayer, REDLINE timed runs, scripts, auction, and PvP.
+- Fully simulated shell and virtual filesystem, implemented in Rust
+- 76 missions across 6 difficulty tiers with a branching conspiracy narrative
+- 12 named NPCs with dossiers, mail, combat profiles, and succession mechanics
+- 7-chapter campaign mode narrated by EVA, the adaptive training AI
+- NPC hacking with hybrid duel + shell challenge bonus system
+- PvP/PvE combat stance, auction house, scripts market, and daily rewards
+- Training Sim, NetCity multiplayer, and REDLINE timed mode
 
-Live public connection endpoint:
+Live public endpoint:
 
-`ssh -p 24444 <username>@ssh-hunt.appnest.cc`
+```
+ssh -p 24444 <username>@ssh-hunt.appnest.cc
+```
 
 ## Table of Contents
 
-- [What This Is](#what-this-is)
-- [Security Guarantees](#security-guarantees)
+- [The World](#the-world)
 - [Quick Start](#quick-start)
-- [Connect and First Login](#connect-and-first-login)
 - [How to Play](#how-to-play)
+- [Mission System](#mission-system)
+- [NPC System](#npc-system)
+- [Campaign Mode](#campaign-mode)
+- [Combat System](#combat-system)
 - [Command Reference](#command-reference)
-- [Cloudflare Tunnel Target (Exact)](#cloudflare-tunnel-target-exact)
+- [Architecture](#architecture)
+- [Security Guarantees](#security-guarantees)
 - [Deployment and Ops](#deployment-and-ops)
-- [Configuration and Secrets](#configuration-and-secrets)
 - [CI/CD and Security Pipeline](#cicd-and-security-pipeline)
+- [Configuration and Secrets](#configuration-and-secrets)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
 
-## What This Is
+## The World
 
-SSH-Hunt is designed for hostile internet exposure while keeping gameplay isolated from the host OS.
-Players connect with a normal SSH client and interact with a simulated terminal, missions, economy, and multiplayer systems.
+Ghost Rail — NetCity's transit backbone — went dark three nights ago. CorpSim says it was a power failure. The logs say otherwise. A beacon called GLASS-AXON-13 keeps repeating. Vault-sat-9 is offline. And a name that shouldn't exist appeared in the auth log: **wren**.
 
-Interactive shell prompt format:
+You are a recruit in CorpSim's "training simulation." What they don't tell you is that every file in the sim is pulled from live infrastructure. You're not practicing — you're investigating.
 
-`<ssh_username>@<node>:/path$`
+The conspiracy unfolds across 7 campaign chapters, 76 missions, and interactions with 12 NPCs — from allies feeding you intel to executives trying to bury the evidence. NPCs can be hacked, defeated, and replaced. The world adapts.
 
-Player identity shown in social/leaderboard views:
-
-`<ssh_username>@<remote_ip>`
-
-## Security Guarantees
-
-SSH-Hunt does **not** execute real host shell commands.
-Gameplay command behavior is implemented against:
-
-- virtual filesystem (VFS),
-- simulated world state and mission engine,
-- sandboxed scripting engine,
-- PostgreSQL persistence.
-
-Hard defensive guarantees:
-
-- no `std::process::Command` or `tokio::process::Command` in game server paths,
-- no host filesystem gameplay access outside mounted runtime data,
-- no host service control or breakout command path,
-- breakout/probing attempts trigger immediate permanent zero + disconnect.
+**[Full story with spoilers: STORY.md](STORY.md)**
 
 ## Quick Start
 
 1. Install Docker and Docker Compose.
-2. Clone to `/docker/ssh-hunt` (or adjust paths below to your location).
-3. Initialize runtime files and start services:
+2. Clone and start:
 
 ```bash
 cd /docker/ssh-hunt
@@ -73,334 +63,290 @@ cp .env.example .env
 make up
 ```
 
-4. Verify:
+3. Verify:
 
 ```bash
 make ps
 make logs
 ```
 
-Default published SSH port is `24444` on the host.
-
-## Connect and First Login
-
-Connect from any SSH client:
+4. Connect:
 
 ```bash
-ssh -p 24444 <username>@<server-or-hostname>
+ssh -p 24444 <username>@localhost
 ```
 
-Live server:
-
-```bash
-ssh -p 24444 <username>@ssh-hunt.appnest.cc
-```
-
-Password is not required by default for gameplay login flow.
+Default published SSH port is `24444`.
 
 ## How to Play
 
-### 1) Start Tutorial and Mission Flow
-
-After login, run:
+### First login
 
 ```text
-tutorial start
-guide
-tutorial start
-missions
-accept keys-vault
+tutorial start          # EVA guides you through 6 shell basics
+campaign start          # begin the Ghost Rail investigation
+missions                # see the mission board
+accept keys-vault       # required mission — register your SSH key
 ```
 
-### 2) Complete KEYS VAULT (Required)
+### Progression flow
 
-Generate a client key locally:
+```
+Tutorial (nav-101 → pipe-101) ──> Keys Vault ──> Starter Missions
+    ──> NetCity Unlock ──> Intermediate ──> Advanced ──> Expert
+    ──> Campaign Chapters ──> NPC Hacking ──> Boss Fight (Wren)
+```
+
+### Key systems
+
+| System | Commands | Description |
+|--------|----------|-------------|
+| Tutorial | `tutorial start/next/reset` | 6-step interactive walkthrough with EVA |
+| Campaign | `campaign start/next` | 7-chapter guided story progression |
+| Missions | `missions`, `accept`, `submit` | 76 missions across 6 tiers |
+| NPCs | `dossier`, `mail`, `hack` | 12 characters with combat and dialogue |
+| Combat | `hack <npc>`, `pvp challenge` | Hybrid duel + shell challenge system |
+| Economy | `shop`, `auction`, `daily` | Currency, items, and daily rewards |
+| Social | `chat`, `mail`, `leaderboard` | Global chat, NPC mail, rankings |
+
+### Register SSH key and unlock NetCity
 
 ```bash
+# Local machine:
 ssh-keygen -t ed25519 -a 64 -f ~/.ssh/ssh-hunt_ed25519
+
+# In-game:
+keyvault register       # paste your public key
+submit keys-vault
+mode netcity            # after completing one starter mission
 ```
 
-Then in-game:
+## Mission System
+
+76 missions organized into 6 tiers, each teaching progressively harder shell skills while advancing the Ghost Rail conspiracy:
+
+| Tier | Count | Rep | Shell skills | Story layer |
+|------|-------|-----|-------------|-------------|
+| Tutorial | 5 | 5 | pwd, ls, cat, echo, grep, pipes | EVA onboarding |
+| Starter | 14 | 10 | grep, sort, uniq, wc, find, redirect | Surface anomalies — first clues |
+| Intermediate | 15 | 15 | head/tail, awk, cut, tee, xargs, tr | The insider thread — evidence |
+| Advanced | 29 | 20 | awk, sed, diff, regex, multi-file, pipelines | The conspiracy — full picture |
+| Expert | 12 | 30 | ROT13, multi-source grep, full pipelines | Endgame — prosecution and reckoning |
+| Gateway | 1 | 15 | SSH key management | Keys Vault (required) |
+
+Each mission has a story beat, hint, suggested command, and validation keywords.
+
+## NPC System
+
+12 named NPCs with full backstories, dossier profiles, and an NPC mail system that delivers messages when you complete missions.
 
 ```text
-keyvault register
+dossier                 # list all discovered NPCs
+dossier KES             # full profile for Kestrel
+mail inbox              # check your NPC mail
+mail read 1             # read message #1
 ```
 
-Paste your public key line when prompted.
+NPCs are progressively unlocked — each character's dossier becomes available only after you complete the mission that reveals them.
 
-### 3) Unlock NetCity
+**EVA** is your constant companion — an AI guide embedded in the training sim. She narrates the tutorial, provides campaign chapter briefings, and gives context-aware hints via the `eva` command.
 
-NetCity unlock requirements:
+## Campaign Mode
 
-- complete `keys-vault`,
-- complete at least one starter mission (`pipes-101`, `finder`, `redirect-lab`, `log-hunt`, `dedupe-city`),
-- log in presenting your registered key.
+7 chapters that guide you through the Ghost Rail conspiracy in narrative order:
 
-Then switch:
+| Ch | Title | Theme |
+|----|-------|-------|
+| 1 | The Blackout | Tutorial + orientation |
+| 2 | Surface Anomalies | First clues + NPC introductions |
+| 3 | The Insider Thread | Evidence gathering |
+| 4 | The Conspiracy | Revelation |
+| 5 | Confrontation | NPC hacking unlocks |
+| 6 | The Reckoning | Endgame evidence chain |
+| 7 | The Reply | Boss fight + sequel hook |
 
 ```text
-mode netcity
+campaign start          # begin chapter 1
+campaign                # show current objectives
+campaign next           # advance after completing an objective
+eva                     # EVA provides context-aware guidance
+eva hint                # hint for your active mission
+eva lore                # background for the current chapter
 ```
 
-### 4) REDLINE Timed Mode
+## Combat System
+
+### PvP/PvE stance
 
 ```text
-mode redline
-settings flash off
+stance                  # show current stance
+stance pvp              # other players can challenge you
+stance pve              # safe from player challenges (default)
 ```
 
-REDLINE auto-returns to Training when timer expires.
+### NPC hacking
 
-### 5) Economy, Scripts, PvP, Rankings
+Requires NetCity mode. NPCs have combat stats scaled by story importance (40 HP easy → 150 HP boss):
 
 ```text
-status
-gate
-events
-auction list
-scripts market
-scripts run token-hunt
-leaderboard
-tier noob|gud|hardcore
-pvp roster
-pvp challenge <username>
-pvp attack
-pvp defend
-pvp script <script_name>
+hack FER                # start hack against Ferro
+hack attack             # deal 14-30 damage
+hack defend             # halve next incoming damage
+hack script quickhack   # script-based attack
+hack solve              # solve the shell challenge for bonus damage
 ```
 
-`Hardcore` players are permanently zeroed after 3 deaths.
+Before each attack, you can run the NPC's shell challenge (a real shell command against the VFS) and use `hack solve` to verify — bonus damage is added to your next hit.
 
-### 6) Social Commands
+### NPC succession
+
+When an NPC is defeated:
+1. Recorded in the **NetCity History Ledger** (`history` command)
+2. A **successor** with a new name takes the role with harder stats
+3. Stats scale: `HP + (total_defeats × 5)`, capped at 300
 
 ```text
-chat global <message>
-chat sector <message>
-chat party <message>
-mail inbox
-party invite <username>
+history                 # view the NetCity history ledger
 ```
 
-### 7) Defense Policy (Player-Facing)
-
-Any attempt to break out into host runtime/tools is treated as intrusion:
-
-- account permanently zeroed,
-- session disconnected immediately.
+Wren is the only NPC who cannot be permanently replaced — the boss returns for every player.
 
 ## Command Reference
 
-Core:
+### Core
+`help` `guide [quick|full|shell]` `tutorial [start|next|reset|1-6]` `missions` `accept <code>` `submit <code>` `briefing [code]` `mode <training|netcity|redline>` `gate` `status` `events` `leaderboard [N]` `daily` `tier <noob|gud|hardcore>` `settings flash <on|off>`
 
-- `help`
-- `guide [quick|full]`
-- `tutorial start`
-- `missions`
-- `accept <mission-code>`
-- `submit <mission-code>`
-- `mode <training|netcity|redline>`
-- `gate`
-- `settings flash <on|off>`
-- `keyvault register [ssh-public-key-line]`
-- `status`
-- `events`
-- `leaderboard [N]`
-- `daily`
-- `tier <noob|gud|hardcore>`
+### Intel
+`dossier [callsign]` `mail [inbox|read N|count]` `eva [hint|status|lore]` `campaign [start|next]` `history`
 
-Economy:
+### Combat
+`stance [pvp|pve]` `hack <callsign>` `hack attack|defend|script <name>|solve` `pvp roster` `pvp challenge <username>` `pvp attack|defend|script <name>`
 
-- `inventory`
-- `shop list`
-- `shop buy <sku>`
-- `auction list`
-- `auction sell <sku> <qty> <start_price> [buyout]`
-- `auction bid <listing_id> <amount>`
-- `auction buyout <listing_id>`
+### Economy
+`inventory` `shop list|buy <sku>` `auction list|sell|bid|buyout` `scripts market` `scripts run <name>`
 
-PvP:
+### Social
+`chat <global|sector|party> <message>` `keyvault register`
 
-- `pvp roster`
-- `pvp challenge <username>`
-- `pvp attack`
-- `pvp defend`
-- `pvp script <script_name>`
+### Shell (simulated)
+`pwd` `cd` `ls [-l] [-la]` `cat [-n]` `head [-n N]` `tail [-n N]` `grep [-i] [-v] [-n] [-c] [-E]` `find [-name] [-type]` `wc [-l] [-w] [-c]` `sort [-r] [-n] [-u] [-k N] [-t]` `uniq [-c] [-d]` `cut [-f] [-d] [-c]` `sed` `awk [-F]` `tr` `tee` `xargs [-I{}]` `echo [-n] [-e]` `printf` `seq` `nl` `column [-t]` `paste` `cp [-r]` `mv` `rm [-r]` `mkdir` `touch` `diff` `env` `export`
 
-Scripts:
+## Architecture
 
-- `scripts market`
-- `scripts run <name>`
+SSH-Hunt is a Rust workspace with 8 crates:
 
-## Cloudflare Tunnel Target (Exact)
+```
+ssh-hunt/crates/
+├── ssh_hunt_server    # Main binary — SSH server, game commands, VFS bootstrap
+├── shell              # Tokenizer + pipeline executor (|, &&, ||, >, >>)
+├── vfs                # In-memory virtual filesystem
+├── world              # Missions, players, NPCs, combat, economy, campaign
+├── scripts            # Sandboxed scripting engine
+├── ui                 # Terminal UI components (banners, themes, progress meters)
+├── protocol           # Shared types (Mode, MissionStatus, MailMessage, etc.)
+└── admin              # Admin tooling
 
-For the current Docker setup in this repo, point the tunnel origin to:
+ssh-hunt/tests/        # Integration test suite (93 regression tests)
+```
 
-`ssh://localhost:24444`
+The game server is a custom `russh`-based SSH daemon. All gameplay commands execute against:
+- An in-memory **virtual filesystem** (VFS) — not the host filesystem
+- A **simulated world state** — missions, NPCs, economy, duels
+- A **sandboxed script engine** — player scripts cannot access host resources
+- **PostgreSQL** — persistent player data, mission progress, leaderboard
 
-Why:
+## Security Guarantees
 
-- container listens on `22222`,
-- compose publishes `${SSH_HUNT_PORT:-24444}:22222`,
-- so host-side tunnel should target host port `24444`.
+SSH-Hunt is designed for hostile internet exposure.
 
-If you run `cloudflared` inside the same Docker network as `ssh-hunt`, target:
-
-`ssh://ssh-hunt:22222`
-
-If you are **not** using Cloudflare Tunnel and are exposing `ssh-hunt.appnest.cc` with an A/AAAA record:
-
-- keep DNS record as **DNS only** (no HTTP proxy),
-- proxy mode can break raw SSH on custom port `24444`.
+Hard defensive guarantees:
+- No `std::process::Command` or `tokio::process::Command` in game server paths
+- No host filesystem access outside mounted runtime data
+- No host service control or breakout command path
+- Breakout/probing attempts trigger immediate **permanent zero + disconnect**
+- `#![forbid(unsafe_code)]` on all gameplay crates
 
 ## Deployment and Ops
 
-Primary operator commands:
-
 ```bash
-make up
-make down
-make ps
-make logs
-make restart
-make doctor
-make firewall-open-24444
-make firewall-status
-make db-migrate
-make db-seed
-make test
-make backup
-make restore
+make up                     # start all services
+make down                   # stop all services
+make ps                     # container status
+make logs                   # tail logs
+make restart                # restart services
+make doctor                 # health check
+make firewall-open-24444    # open SSH port in firewalld
+make db-migrate             # run database migrations
+make db-seed                # seed initial data
+make test                   # run full test suite
+make backup                 # backup player data
 ```
 
-Fedora firewalld example:
+Cloudflare Tunnel target: `ssh://localhost:24444`
+If inside Docker network: `ssh://ssh-hunt:22222`
 
+## CI/CD and Security Pipeline
+
+All CI runs on **self-hosted runners** managed by [haskell-ci-orchestrator](https://github.com/jalsarraf0/haskell-ci-orchestrator). The unified pipeline (`.github/workflows/ci.yml`) includes:
+
+| Job | What it does | Trigger |
+|-----|-------------|---------|
+| **Lint** | `cargo fmt --check` + `cargo clippy -D warnings` | Every push/PR |
+| **Test** | `cargo test --workspace` (158+ tests) | Every push/PR |
+| **Security** | gitleaks, cargo audit, cargo deny, trivy, CodeQL, osv-scanner | Every push/PR |
+| **SBOM** | Syft SPDX + CycloneDX generation | main branch |
+| **Docker** | Build + push game server image | main + tags |
+| **Release** | SHA256 checksums, build provenance attestation, GitHub Release | Tags only |
+
+Pipeline features:
+- Concurrency groups cancel in-progress runs on same ref
+- Cargo registry/git/target caching for fast rebuilds
+- Self-hosted runners with host networking for service container access
+- CPU budget auto-divided across 5 runner containers (1 persistent + 4 ephemeral)
+- Weekly scheduled run (Monday 04:00 UTC) for dependency freshness
+
+Runner setup:
 ```bash
-sudo firewall-cmd --permanent --add-port=24444/tcp
-sudo firewall-cmd --reload
+cp .env.runner.example .env.runner
+make runner-up              # start self-hosted runners
+make runner-logs            # tail runner output
 ```
-
-See full guide: `docs/DEPLOYMENT.md`
 
 ## Configuration and Secrets
 
 Environment template: `.env.example`
 
-Important defaults:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSH_HUNT_PORT` | `24444` | Host-published SSH port |
+| `SSH_HUNT_LISTEN` | `0.0.0.0:22222` | Container listen address |
+| `DATABASE_URL` | `postgres://ssh_hunt:...` | PostgreSQL connection |
+| `HIDDEN_OPS_PATH` | `/data/secrets/hidden_ops.yaml` | Secret missions config |
+| `SSH_HOST_KEY_PATH` | `/data/secrets/ssh_host_ed25519` | Persistent host key |
 
-- `SSH_HUNT_PORT=24444`
-- `SSH_HUNT_LISTEN=0.0.0.0:22222`
-- `DATABASE_URL=postgres://ssh_hunt:ssh_hunt_dev@postgres:5432/ssh_hunt`
-- `HIDDEN_OPS_PATH=/data/secrets/hidden_ops.yaml`
-- `SSH_HOST_KEY_PATH=/data/secrets/ssh_host_ed25519`
-
-Runtime-only secret files (not committed):
-
-- `/docker/ssh-hunt/volumes/ssh-hunt/secrets/admin.yaml`
-- `/docker/ssh-hunt/volumes/ssh-hunt/secrets/hidden_ops.yaml`
-- `/docker/ssh-hunt/volumes/ssh-hunt/secrets/ssh_host_ed25519` (persistent SSH host key)
-
-Keep runtime secret files private (`chmod 600`).
-If `SSH_HOST_KEY_PATH` is not writable at runtime, server falls back to an ephemeral key for that process and logs a warning.
-
-## CI/CD and Security Pipeline
-
-Pipelines include:
-
-- workspace build checks and formatting,
-- clippy with warnings denied,
-- full unit/integration/regression test suite,
-- SQL migration checks,
-- `cargo audit` and `cargo deny`,
-- secret scanning (`gitleaks`),
-- static analysis (`CodeQL`),
-- vulnerability scans (`trivy`, `osv-scanner`),
-- Docker build/push, signed image workflow, SBOM/provenance.
-
-Runner policy:
-
-- workflows use `SSH_HUNT_RUNNER_LABELS` (JSON array string) to choose runner labels,
-- default fallback is GitHub-hosted `["ubuntu-latest"]` for forks/clones,
-- this repo can be forced to self-hosted by setting:
-  `gh variable set SSH_HUNT_RUNNER_LABELS --body '["self-hosted","linux","x64","ssh-hunt"]'`,
-- self-hosted compose stack must include `1` persistent + `4` ephemeral runners,
-- self-hosted runners use host networking so CI service containers are reachable,
-- runner CPU policy: total runner pool budget is `75%` of host cores, auto-divided across 5 containers via `scripts/refresh-runner-cpu-budget.sh`,
-- runner containers default to non-root mode and map host docker socket group (`RUNNER_DOCKER_GID`) for Docker build access,
-- policy enforcement script: `./scripts/verify-self-hosted-runner-directive.sh` runs on every `push` in Security workflow.
-
-Self-hosted runner setup:
-
-- `cp .env.runner.example .env.runner`
-- `make runner-up` (refreshes CPU budget, normalizes runner workdir ownership, builds `docker/runner/Dockerfile`, then starts persistent + 4 ephemeral runners using `.env.runner`)
-- `make runner-logs`
-- full guide: `docs/SELF_HOSTED_RUNNER.md`
+Runtime secrets (not committed): `admin.yaml`, `hidden_ops.yaml`, `ssh_host_ed25519`
 
 ## Troubleshooting
 
-Service not reachable:
+**Service not reachable:** `make ps` → `ss -ltnp | rg 24444` → `make doctor` → `make firewall-open-24444`
 
-- confirm `make ps` shows healthy containers,
-- verify host port with `ss -ltnp | rg 24444`,
-- check game logs with `make logs`.
-- run `make doctor` for a one-shot local health summary.
-- run `make firewall-open-24444` to open `24444/tcp` in all firewalld zones.
-- run `make firewall-status` to verify active zone + `24444/tcp` allow state.
+**Connection refused:** Containers stopped, missing `.env`, or NAT/port-forward disabled.
 
-`Connection refused` specifically usually means no listener at that moment.
-Most common causes:
+**NetCity locked:** Complete `keys-vault` + one starter mission, then reconnect with registered SSH key.
 
-- containers are stopped,
-- compose startup failed (for example missing `.env`),
-- host listener exists but external NAT/port-forward path is disabled.
+**Host key warning:** Expected only on first deploy. Key persists at `/data/secrets/ssh_host_ed25519`.
 
-Windows `ssh -vvvv` notes:
-
-- `Failed to open .../.ssh/config error:2` is non-fatal when those files do not exist.
-- `error: 10061` means TCP was actively refused at the target edge (service down or wrong port-forward destination).
-- `error: 10060` means timeout (traffic dropped/blocked on path).
-
-Cross-shell UI compatibility notes (PowerShell, bash, zsh, macOS Terminal, iTerm2):
-
-- server normalizes all output to CRLF over SSH PTY so banners/prompt do not stair-step,
-- CR, LF, and CRLF Enter key variants are de-duplicated server-side,
-- terminal escape input sequences (for example arrow keys) are ignored safely in command buffer,
-- very narrow terminals use compact headers/sections to avoid broken wrapping,
-- frame rendering auto-falls back to ASCII on low-capability terminals and adapts on terminal resize.
-
-If you see host key warnings after server rebuild:
-
-- SSH-Hunt now persists host key by default at `/data/secrets/ssh_host_ed25519`.
-- warning should only happen on first deploy or intentional key rotation.
-
-Public hostname checklist for `ssh-hunt.appnest.cc`:
-
-- test local host listener: `ss -ltnp | rg 24444`,
-- confirm containers: `make ps`,
-- confirm firewalld port: `sudo firewall-cmd --zone=lan-ssh --query-port=24444/tcp`,
-- confirm router/NAT rule: WAN `TCP/24444` -> `<server-lan-ip>:24444`,
-- confirm DNS currently resolves to your active public IP (for example on March 5, 2026 this host resolves to `70.233.5.234`).
-
-NetCity still locked:
-
-- verify `keys-vault` is completed,
-- complete one starter mission,
-- reconnect with the same registered key loaded in SSH client.
-
-Database issues:
-
-- run `make db-migrate`,
-- run `make db-seed`,
-- inspect postgres logs via `docker compose logs postgres`.
+**Cross-terminal compatibility:** Server normalizes CRLF, handles CR/LF/CRLF Enter variants, ignores escape sequences, auto-falls back to ASCII frames on narrow terminals.
 
 ## Contributing
 
-- Read `docs/GAMEPLAY.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, and `docs/SELF_HOSTED_RUNNER.md`.
-- Follow `CODE_OF_CONDUCT.md`.
-- Run `make test` before opening a PR.
+- Read `docs/GAMEPLAY.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`, and `docs/SELF_HOSTED_RUNNER.md`
+- Follow `CODE_OF_CONDUCT.md`
+- Run `make test` before opening a PR
+- CI gate: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 
 ## License
 
 Dual-licensed under:
-
 - MIT (`LICENSE-MIT`)
 - Apache-2.0 (`LICENSE-APACHE`)
