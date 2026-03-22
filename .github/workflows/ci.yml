@@ -28,7 +28,7 @@ env:
 jobs:
   repo-guard:
     name: Repository Context Guard
-    runs-on: [self-hosted, unified-all]
+    runs-on: [self-hosted, unified-all, Linux]
     timeout-minutes: 2
     steps:
       - name: Verify repository ownership
@@ -42,7 +42,7 @@ jobs:
           echo "Repository context verified."
   lint:
     name: Lint
-    runs-on: [self-hosted, unified-all]
+    runs-on: [self-hosted, unified-all, Linux]
     needs: repo-guard
     timeout-minutes: 30
     steps:
@@ -76,7 +76,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
   test:
     name: Test
-    runs-on: [self-hosted, unified-all]
+    runs-on: [self-hosted, unified-all, Linux]
     needs: lint
     timeout-minutes: 30
     steps:
@@ -112,7 +112,7 @@ jobs:
         run: cargo test --workspace
   security:
     name: Security
-    runs-on: [self-hosted, unified-all]
+    runs-on: [self-hosted, unified-all, Linux]
     needs: lint
     timeout-minutes: 30
     steps:
@@ -156,7 +156,7 @@ jobs:
         run: command -v osv-scanner >/dev/null && osv-scanner -r . || echo "osv-scanner not available — skipping"
   sbom:
     name: SBOM
-    runs-on: [self-hosted, unified-all]
+    runs-on: [self-hosted, unified-all, Linux]
     needs: test
     if: github.ref == 'refs/heads/main'
     timeout-minutes: 15
@@ -177,7 +177,7 @@ jobs:
           retention-days: 90
   docker:
     name: Docker Build
-    runs-on: [self-hosted, unified-all]
+    runs-on: [self-hosted, unified-all, Linux]
     needs: test
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     timeout-minutes: 45
@@ -191,7 +191,7 @@ jobs:
         run: command -v docker >/dev/null && docker compose version >/dev/null 2>&1 && docker compose build ssh-hunt || echo 'docker compose not available — skipping build'
   release:
     name: Release
-    runs-on: [self-hosted, unified-all]
+    runs-on: [self-hosted, unified-all, Linux]
     needs:
       - test
       - security
