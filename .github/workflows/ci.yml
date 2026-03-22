@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Verify repository ownership
+        shell: bash
         run: |
           echo "Repository: ${{ github.repository }}"
           if [ "${{ github.repository }}" != "Al-Sarraf-Tech/SSH-Hunt" ]; then
