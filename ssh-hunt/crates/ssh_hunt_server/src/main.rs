@@ -22,8 +22,10 @@ use tokio::net::TcpListener;
 use tokio::time::{sleep, timeout};
 use tracing::{error, info, warn};
 use ui::{
-    key_value_line, lore_message, mission_state_badge, mode_banner_adaptive, mode_switch_banner,
-    progress_meter, section_banner_adaptive, Theme, RESET,
+    boot_line, glitch_divider, key_value_line, lore_message, mission_state_badge,
+    mode_banner_adaptive, mode_switch_banner, neon_header, pad_visible, panel_divider_line,
+    progress_meter, scanline, section_banner_adaptive, splash_logo, status_dot, titled_panel,
+    two_column_kv, BootStatus, StatusState, Theme, RESET,
 };
 use uuid::Uuid;
 use vfs::Vfs;
@@ -3935,45 +3937,432 @@ impl GameSession {
         out
     }
 
-    /// Matrix-style green-rain player banner.
+    /// Cyberpunk neon welcome banner — Matrix x Cyberpunk 2077 aesthetic.
     fn player_welcome_banner(&self) -> String {
+        let cols = self.pty_columns.max(20) as usize;
+        let uc = self.supports_unicode;
         let theme = Theme::for_mode(self.mode.clone());
         let mut out = String::new();
-        // Matrix-style boot sequence
-        out.push_str("\x1b[32m"); // Green
-        out.push_str("Wake up, operative...\n");
-        out.push_str("The Matrix has you...\n");
-        out.push_str("Follow the white rabbit.\n\n");
-        out.push_str("Knock, knock.\n\n");
-        out.push_str("\x1b[0m"); // Reset
+
+        // 1. Splash logo
+        out.push_str(&splash_logo(self.mode.clone(), cols, uc));
+        out.push('\n');
+
+        // 2. Boot sequence
+        out.push_str(&self.build_boot_sequence());
+        out.push('\n');
+
+        // 3. Scanline transition
+        out.push_str(&scanline(self.mode.clone(), cols, uc));
+
+        // 4. Mode banner (existing — already looks good)
         out.push_str(&self.render_mode_banner(self.mode.clone()));
         out.push('\n');
-        out.push_str(lore_message(self.mode.clone()));
-        out.push('\n');
-        out.push_str(&self.render_section_banner("BOOT HUD"));
+
+        // 5. Lore message (dimmed, atmospheric)
         out.push_str(&format!(
-            "{}Next{} tutorial start -> briefing -> missions -> gate -> mode netcity\n",
-            theme.accent, RESET
+            "{dim}{}{RESET}\n\n",
+            lore_message(self.mode.clone()),
+            dim = theme.dim,
         ));
-        out.push_str("Type `help` for the full command matrix.\n");
-        out.push_str("Type `tutorial start` for a guided shell walkthrough (new to terminals? start here).\n");
-        out.push_str("Type `guide` for step-by-step onboarding and progression.\n");
-        out.push_str("Type `guide shell` for bash fundamentals inside the sim.\n");
-        out.push_str("Type `briefing` for the story so far and mission-specific hints.\n");
+
+        // 6. Glitch divider transition to HUD
+        out.push_str(&glitch_divider(self.mode.clone(), cols, uc));
+
+        // 7. Player HUD panel
+        out.push_str(&self.build_player_hud());
         out.push('\n');
-        out.push_str(&self.quickstart_guide());
-        out.push_str("Starter files: /missions/rookie-ops.txt, /missions/story-so-far.txt\n");
-        out.push_str(
-            "Host breakout/probing attempts trigger permanent account zero + disconnect.\n",
-        );
+
+        // 8. Contextual quick start
+        out.push_str(&neon_header(self.mode.clone(), "QUICK START", cols, uc));
+        out.push_str(&self.contextual_hint());
+        out.push('\n');
+
+        // 9. Security warning (compact, dimmed)
+        out.push_str(&format!(
+            "{dim}Breakout/probing attempts -> permanent account zero + disconnect.{RESET}\n",
+            dim = theme.dim,
+        ));
+
         out
     }
 
+    /// Personalized system boot sequence using real player data.
+    fn build_boot_sequence(&self) -> String {
+        let cols = self.pty_columns.max(20) as usize;
+        let m = self.mode.clone();
+        let mut out = String::new();
+
+        out.push_str(&boot_line(
+            m.clone(),
+            "NEURAL LINK",
+            "connected",
+            BootStatus::Ok,
+            cols,
+        ));
+
+        // Identity — use player's actual username
+        let identity_msg = if let Some(ref p) = self.profile {
+            format!("{} verified", p.username)
+        } else {
+            "guest (unregistered)".to_string()
+        };
+        out.push_str(&boot_line(
+            m.clone(),
+            "IDENTITY",
+            &identity_msg,
+            BootStatus::Ok,
+            cols,
+        ));
+
+        out.push_str(&boot_line(
+            m.clone(),
+            "ENCRYPTION",
+            "AES-256-GCM active",
+            BootStatus::Ok,
+            cols,
+        ));
+
+        // Fingerprint
+        let fp_msg = self
+            .offered_fingerprints
+            .first()
+            .map(|fp| {
+                let short: String = fp.chars().take(20).collect();
+                format!("{short}...")
+            })
+            .unwrap_or_else(|| "unregistered".to_string());
+        let fp_status = if self.offered_fingerprints.is_empty() {
+            BootStatus::Warn
+        } else {
+            BootStatus::Ok
+        };
+        out.push_str(&boot_line(
+            m.clone(),
+            "KEY SIGNATURE",
+            &fp_msg,
+            fp_status,
+            cols,
+        ));
+
+        // Node
+        let node = self
+            .shell_state
+            .as_ref()
+            .map(|s| s.node.as_str())
+            .unwrap_or("corp-sim-01");
+        out.push_str(&boot_line(
+            m.clone(),
+            "NODE",
+            &format!("{node} online"),
+            BootStatus::Ok,
+            cols,
+        ));
+
+        // Vault-sat-9 — degraded in Training, online in NetCity
+        let (vault_msg, vault_status) = match self.mode {
+            Mode::Training => ("degraded", BootStatus::Warn),
+            Mode::NetCity => ("online", BootStatus::Ok),
+            Mode::Redline => ("CRITICAL", BootStatus::Fail),
+        };
+        out.push_str(&boot_line(
+            m.clone(),
+            "VAULT-SAT-9",
+            vault_msg,
+            vault_status,
+            cols,
+        ));
+
+        out.push_str(&boot_line(
+            m.clone(),
+            "GHOST RAIL",
+            "monitoring",
+            BootStatus::Loading,
+            cols,
+        ));
+
+        // Mission DB
+        let mission_count = self
+            .profile
+            .as_ref()
+            .map(|p| p.completed_missions.len())
+            .unwrap_or(0);
+        out.push_str(&boot_line(
+            m.clone(),
+            "MISSION DB",
+            &format!("{mission_count} records loaded"),
+            BootStatus::Ok,
+            cols,
+        ));
+
+        // Wallet
+        let wallet = self.profile.as_ref().map(|p| p.wallet).unwrap_or(0);
+        out.push_str(&boot_line(
+            m.clone(),
+            "WALLET SYNC",
+            &format!("{wallet} Neon Chips"),
+            BootStatus::Ok,
+            cols,
+        ));
+
+        // Combat subsystem
+        let stance = self
+            .profile
+            .as_ref()
+            .map(|p| match p.combat_stance {
+                CombatStance::Pve => "PvE stance active",
+                CombatStance::Pvp => "PvP stance active",
+            })
+            .unwrap_or("PvE stance active");
+        out.push_str(&boot_line(
+            m.clone(),
+            "COMBAT SYS",
+            stance,
+            BootStatus::Ok,
+            cols,
+        ));
+
+        // Mail (only if unread)
+        if let Some(ref p) = self.profile {
+            let unread = p.mailbox.iter().filter(|m| !m.read).count();
+            if unread > 0 {
+                out.push_str(&boot_line(
+                    m.clone(),
+                    "MAIL QUEUE",
+                    &format!("{unread} unread transmission(s)"),
+                    BootStatus::Warn,
+                    cols,
+                ));
+            }
+        }
+
+        // Final: system ready
+        let tier_label = self
+            .profile
+            .as_ref()
+            .map(|p| match p.tier {
+                ExperienceTier::Noob => "NOOB",
+                ExperienceTier::Gud => "GUD",
+                ExperienceTier::Hardcore => "HARDCORE",
+            })
+            .unwrap_or("NOOB");
+        out.push_str(&boot_line(
+            m,
+            "SYSTEM READY",
+            &format!("{tier_label} clearance granted"),
+            BootStatus::Ok,
+            cols,
+        ));
+
+        out
+    }
+
+    /// Cyberpunk HUD panel showing player stats and progress.
+    /// Every body line is padded to exactly `inner_width` visible characters
+    /// so the right border of the panel aligns perfectly.
+    fn build_player_hud(&self) -> String {
+        let cols = self.pty_columns.max(20) as usize;
+        let uc = self.supports_unicode;
+        let m = self.mode.clone();
+        // inner_width must match what titled_panel uses.
+        let inner_width = cols.saturating_sub(4).clamp(20, 76);
+
+        let (alias, tier, wallet, streak, mode_label, rep, stance_str, deaths) =
+            if let Some(ref p) = self.profile {
+                (
+                    p.private_alias.clone(),
+                    match p.tier {
+                        ExperienceTier::Noob => "Noob",
+                        ExperienceTier::Gud => "Gud",
+                        ExperienceTier::Hardcore => "Hardcore",
+                    },
+                    format!("{} NC", p.wallet),
+                    format!("{}d", p.streak),
+                    self.mode.as_label().to_string(),
+                    p.reputation,
+                    match p.combat_stance {
+                        CombatStance::Pve => "PvE",
+                        CombatStance::Pvp => "PvP",
+                    },
+                    p.deaths,
+                )
+            } else {
+                (
+                    "unknown".to_string(),
+                    "Noob",
+                    "0 NC".to_string(),
+                    "0d".to_string(),
+                    "TRAINING".to_string(),
+                    0_i64,
+                    "PvE",
+                    0_u32,
+                )
+            };
+
+        let stance_dot = status_dot(
+            m.clone(),
+            if stance_str == "PvP" {
+                StatusState::Alert
+            } else {
+                StatusState::Ok
+            },
+            uc,
+        );
+        let rep_bar = progress_meter(m.clone(), (rep.min(1000) * 100 / 1000) as u8, 8);
+
+        // Top stats via two_column_kv (already padded to inner_width).
+        let pairs: Vec<(&str, &str)> = vec![
+            ("Alias", &alias),
+            ("Mode", &mode_label),
+            ("Tier", tier),
+            ("Wallet", &wallet),
+        ];
+        let mut body = two_column_kv(m.clone(), &pairs, cols);
+
+        // Streak / Deaths / Stance — pad to inner_width.
+        let streak_line =
+            format!("Streak: {streak}    Deaths: {deaths}    Stance: {stance_dot} {stance_str}");
+        body.push(pad_visible(&streak_line, inner_width));
+
+        // Rep bar — pad to inner_width.
+        let rep_line = format!("Rep: {rep} {rep_bar}");
+        body.push(pad_visible(&rep_line, inner_width));
+
+        // Divider — exactly inner_width using panel_divider_line.
+        body.push(panel_divider_line(cols, uc));
+
+        // Progress section.
+        let (completed, active, campaign_ch, tutorial_step, unread_mail) =
+            if let Some(ref p) = self.profile {
+                (
+                    p.completed_missions.len(),
+                    p.active_missions.len(),
+                    p.campaign_chapter,
+                    p.tutorial_step,
+                    p.mailbox.iter().filter(|m| !m.read).count(),
+                )
+            } else {
+                (0, 0, 0, 0, 0)
+            };
+
+        let mission_pct = if completed + active > 0 {
+            ((completed * 100) / (completed + active).max(1)) as u8
+        } else {
+            0
+        };
+        let mission_bar = progress_meter(m.clone(), mission_pct, 10);
+        body.push(pad_visible(
+            &format!("Missions: {completed} done / {active} active  {mission_bar}"),
+            inner_width,
+        ));
+
+        let campaign_pct = ((campaign_ch as u16 * 100) / 12) as u8;
+        let campaign_bar = progress_meter(m.clone(), campaign_pct, 10);
+        body.push(pad_visible(
+            &format!("Campaign: Ch.{campaign_ch}/12  {campaign_bar}"),
+            inner_width,
+        ));
+
+        let tutorial_msg = if tutorial_step >= 7 {
+            "COMPLETE".to_string()
+        } else if tutorial_step == 0 {
+            "not started".to_string()
+        } else {
+            format!("Step {tutorial_step}/7")
+        };
+        body.push(pad_visible(
+            &format!("Tutorial: {tutorial_msg}"),
+            inner_width,
+        ));
+
+        let mail_dot = status_dot(
+            m.clone(),
+            if unread_mail > 0 {
+                StatusState::Warn
+            } else {
+                StatusState::Inactive
+            },
+            uc,
+        );
+        body.push(pad_visible(
+            &format!("Mail: {mail_dot} {unread_mail} unread"),
+            inner_width,
+        ));
+
+        titled_panel(m, "OPERATIVE HUD", &body, cols, uc)
+    }
+
+    /// Contextual quick-start hint based on player progress.
+    fn contextual_hint(&self) -> String {
+        let theme = Theme::for_mode(self.mode.clone());
+        if let Some(ref p) = self.profile {
+            if p.tutorial_step == 0 {
+                return format!(
+                    "  {a}New operative?{R} Run {hl}tutorial start{R} for guided onboarding.\n\
+                     {d}  Or try: help | briefing | missions | guide shell{R}\n",
+                    a = theme.accent,
+                    hl = theme.highlight,
+                    d = theme.dim,
+                    R = RESET,
+                );
+            }
+            if p.tutorial_step < 7 {
+                return format!(
+                    "  {a}Tutorial in progress{R} (step {s}/7). Run {hl}tutorial next{R} to continue.\n",
+                    a = theme.accent, s = p.tutorial_step, hl = theme.highlight, R = RESET,
+                );
+            }
+            if p.completed_missions.len() < 3 {
+                return format!(
+                    "  {a}Ready for missions.{R} Run {hl}missions{R} to see the board, {hl}briefing{R} for story context.\n",
+                    a = theme.accent, hl = theme.highlight, R = RESET,
+                );
+            }
+            if p.campaign_chapter > 0 && p.campaign_chapter < 12 {
+                return format!(
+                    "  {a}Campaign Ch.{c} active.{R} Run {hl}campaign{R} for current objectives.\n",
+                    a = theme.accent,
+                    c = p.campaign_chapter,
+                    hl = theme.highlight,
+                    R = RESET,
+                );
+            }
+            format!(
+                "  Run {hl}help{R} for commands, {hl}status{R} for full profile, {hl}daily{R} for today's rewards.\n",
+                hl = theme.highlight, R = RESET,
+            )
+        } else {
+            format!(
+                "  {a}New operative?{R} Run {hl}tutorial start{R} for guided onboarding.\n",
+                a = theme.accent,
+                hl = theme.highlight,
+                R = RESET,
+            )
+        }
+    }
+
     fn prompt(&self) -> String {
-        self.shell_state
+        let base = self
+            .shell_state
             .as_ref()
             .map(ShellState::prompt)
-            .unwrap_or_else(|| "guest@boot:/$ ".to_owned())
+            .unwrap_or_else(|| "guest@boot:/$ ".to_owned());
+        if self.supports_ansi {
+            let theme = Theme::for_mode(self.mode.clone());
+            let tag = match self.mode {
+                Mode::Training => "SIM",
+                Mode::NetCity => "NET",
+                Mode::Redline => "RED",
+            };
+            format!("{}[{}]{} {}", theme.primary, tag, RESET, base)
+        } else {
+            let tag = match self.mode {
+                Mode::Training => "[SIM]",
+                Mode::NetCity => "[NET]",
+                Mode::Redline => "[RED]",
+            };
+            format!("{} {}", tag, base)
+        }
     }
 
     fn render_mode_banner(&self, mode: Mode) -> String {
